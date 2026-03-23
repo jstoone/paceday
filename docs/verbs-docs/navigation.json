@@ -1,0 +1,131 @@
+[
+    {
+        "title": "Getting Started",
+        "slug": "getting-started",
+        "items": [
+            {
+                "title": "Quickstart",
+                "slug": "quickstart",
+                "icon": "arrow-right"
+            },
+            {
+                "title": "Upgrading",
+                "slug": "upgrading",
+                "icon": "map"
+            }
+        ]
+    },
+    {
+        "title": "Reference",
+        "slug": "reference",
+        "items": [
+            {
+                "title": "Events",
+                "slug": "events",
+                "icon": "cube"
+            },
+            {
+                "title": "States",
+                "slug": "states",
+                "icon": "queue-list"
+            },
+            {
+                "title": "Testing",
+                "slug": "testing",
+                "icon": "beaker"
+            },
+            {
+                "title": "What is Event Sourcing?",
+                "slug": "event-sourcing",
+                "icon": "information-circle"
+            }
+        ]
+    },
+    {
+        "title": "Resources",
+        "slug": "resources",
+        "items": [
+            {
+                "title": "Videos",
+                "slug": "videos",
+                "icon": "tv"
+            },
+            {
+                "title": "Articles",
+                "slug": "articles",
+                "icon": "newspaper"
+            }
+        ]
+    },
+    {
+        "title": "Examples",
+        "slug": "examples",
+        "items": [
+            {
+                "title": "Shopping Cart",
+                "slug": "cart",
+                "icon": "shopping-cart",
+                "url": "/examples/cart"
+            },
+            {
+                "title": "Board Game",
+                "slug": "monopoly",
+                "icon": "puzzle-piece",
+                "url": "/examples/monopoly"
+            },
+            {
+                "title": "Subscriptions",
+                "slug": "subscriptions",
+                "icon": "cursor-arrow-rays",
+                "url": "/examples/subscriptions"
+            }
+        ]
+    },
+    {
+        "title": "Technical",
+        "slug": "technical",
+        "items": [
+            {
+                "title": "Metadata",
+                "slug": "metadata",
+                "icon": "cube-transparent"
+            },
+            {
+                "title": "Attributes",
+                "slug": "attributes",
+                "icon": "hashtag"
+            },
+            {
+                "title": "IDs",
+                "slug": "ids",
+                "icon": "identification"
+            },
+            {
+                "title": "Event Lifecycle",
+                "slug": "event-lifecycle",
+                "icon": "arrow-path"
+            },
+            {
+                "title": "Combating Jargon",
+                "slug": "combating-jargon",
+                "icon": "chat-bubble-bottom-center-text"
+            },
+            {
+                "title": "Serialization",
+                "slug": "serialization",
+                "icon": "server-stack"
+            }
+        ]
+    },
+    {
+        "title": "Techniques",
+        "slug": "techniques",
+        "items": [
+            {
+                "title": "State-first Development",
+                "slug": "state-first-development",
+                "icon": "circle-stack"
+            }
+        ]
+    }
+]
