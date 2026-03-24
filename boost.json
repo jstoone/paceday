@@ -6,11 +6,17 @@
     "herd_mcp": true,
     "mcp": true,
     "nightwatch_mcp": false,
+    "packages": [
+        "laravel/ai",
+        "laravel/fortify"
+    ],
     "sail": false,
     "skills": [
         "fluxui-development",
         "livewire-development",
         "pest-testing",
-        "tailwindcss-development"
+        "tailwindcss-development",
+        "ai-sdk-development",
+        "fortify-development"
     ]
 }

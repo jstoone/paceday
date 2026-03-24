@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(composer require:*)",
+      "Bash(/tmp/file_summary.txt:*)",
+      "Read(//tmp/**)",
+      "Bash(vendor/bin/pint --dirty --format agent 2>&1)",
+      "Bash(php artisan:*)",
+      "Bash(find /Users/jstoone/Sites/paceday -type f \\\\\\(-name *.php -o -name *.md \\\\\\) -path */docs/*)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "laravel-boost",
+    "herd"
+  ],
+  "defaultMode": "bypassPermissions"
+}
