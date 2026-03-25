@@ -25,6 +25,42 @@ new #[Title('Question')] class extends Component {
         $this->guess = $this->question->guess;
     }
 
+    /** @return array{round_count: int, average_days: float, consumption_rate: ?float, consumption_unit: string, average_accuracy: ?float}|null */
+    #[Computed]
+    public function trends(): ?array
+    {
+        $endedRounds = $this->question->rounds()
+            ->where('status', 'ended')
+            ->oldest('occurred_at')
+            ->get();
+
+        if ($endedRounds->isEmpty()) {
+            return null;
+        }
+
+        $guessDays = self::parseDurationToDays($this->question->guess);
+
+        $durations = $endedRounds->map(fn ($round) => (int) $round->occurred_at->diffInDays($round->ended_at));
+
+        $averageDays = round($durations->avg(), 1);
+
+        $consumptionRate = $this->question->amount > 0 && $averageDays > 0
+            ? round($this->question->amount / $averageDays, 1)
+            : null;
+
+        $averageAccuracy = $guessDays !== null
+            ? round($durations->avg() - $guessDays, 1)
+            : null;
+
+        return [
+            'round_count' => $endedRounds->count(),
+            'average_days' => $averageDays,
+            'consumption_rate' => $consumptionRate,
+            'consumption_unit' => $this->question->unit,
+            'average_accuracy' => $averageAccuracy,
+        ];
+    }
+
     /** @return array<int, array{round: \App\Models\Round, notes: Collection}> */
     #[Computed]
     public function timeline(): array
@@ -97,6 +133,7 @@ new #[Title('Question')] class extends Component {
         $this->note = null;
         $this->occurred_at = now()->format('Y-m-d');
         unset($this->timeline);
+        unset($this->trends);
     }
 
     public function updateGuess(): void
@@ -116,6 +153,7 @@ new #[Title('Question')] class extends Component {
 
         $this->question->refresh();
         unset($this->timeline);
+        unset($this->trends);
     }
 
     public function startNewRound(): void
@@ -285,6 +323,47 @@ new #[Title('Question')] class extends Component {
                 <flux:button wire:click="startNewRound" class="w-full py-3 text-base !bg-teal-600 !text-white !shadow-md !shadow-teal-600/25 hover:!bg-teal-700 hover:!shadow-lg hover:!shadow-teal-600/30 hover:!-translate-y-px transition-all">
                     Start a new round
                 </flux:button>
+            @endif
+
+            {{-- Trends --}}
+            @if ($this->trends)
+                <div class="paceday-card space-y-4">
+                    <h2 class="text-lg font-bold text-bark">Trends</h2>
+
+                    {{-- Key metrics --}}
+                    <div class="flex items-baseline gap-6">
+                        <div>
+                            <span class="text-2xl font-bold text-bark" style="font-family: var(--font-heading)">
+                                {{ $this->trends['average_days'] }}
+                            </span>
+                            <span class="text-sm text-bark-light">days avg</span>
+                        </div>
+
+                        @if ($this->trends['consumption_rate'])
+                            <div>
+                                <span class="text-2xl font-bold text-bark" style="font-family: var(--font-heading)">
+                                    ~{{ $this->trends['consumption_rate'] }}
+                                </span>
+                                <span class="text-sm text-bark-light">{{ $this->trends['consumption_unit'] }}/day</span>
+                            </div>
+                        @endif
+                    </div>
+
+                    {{-- Guess accuracy summary --}}
+                    @if ($this->trends['average_accuracy'] !== null)
+                        @php $acc = $this->trends['average_accuracy']; @endphp
+                        <p class="text-sm text-bark-light">
+                            @if ($acc == 0)
+                                <span class="font-medium text-green-600">Your guess is spot on on average!</span>
+                            @elseif ($acc > 0)
+                                You tend to last <span class="font-medium text-amber-600">{{ abs($acc) }} {{ Str::plural('day', (int) abs($acc)) }} longer</span> than guessed
+                            @else
+                                You tend to run out <span class="font-medium text-red-600">{{ abs($acc) }} {{ Str::plural('day', (int) abs($acc)) }} early</span>
+                            @endif
+                        </p>
+                    @endif
+
+                </div>
             @endif
 
             {{-- Timeline --}}

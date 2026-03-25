@@ -504,6 +504,207 @@ it('does not save empty guess', function () {
         ->exists())->toBeFalse();
 });
 
+// --- Trends ---
+
+it('does not show trends section when no ended rounds exist', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertDontSee('Trends');
+});
+
+it('shows trends section with average duration after ending a round', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    $round = Round::where('question_id', $question->id)->first();
+    $round->update([
+        'occurred_at' => '2026-03-01 12:00:00',
+        'ended_at' => '2026-03-21 12:00:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('Trends')
+        ->assertSee('20') // 20 days avg
+        ->assertSee('days avg');
+});
+
+it('shows consumption rate using amount and unit', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    $round = Round::where('question_id', $question->id)->first();
+    $round->update([
+        'occurred_at' => '2026-03-01 12:00:00',
+        'ended_at' => '2026-03-21 12:00:00', // 20 days → 40/20 = 2.0
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('~2')
+        ->assertSee('capsules/day');
+});
+
+it('shows guess accuracy summary when guess exists', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->set('guess', '3 weeks')
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    // 14 days — 7 days shorter than 3 weeks (21 days)
+    $round = Round::where('question_id', $question->id)->first();
+    $round->update([
+        'occurred_at' => '2026-03-01 12:00:00',
+        'ended_at' => '2026-03-15 12:00:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('run out')
+        ->assertSee('7 days early');
+});
+
+it('shows trends with a single ended round without crashing', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    $round = Round::where('question_id', $question->id)->first();
+    $round->update([
+        'occurred_at' => '2026-03-01 12:00:00',
+        'ended_at' => '2026-03-21 12:00:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('Trends')
+        ->assertSee('days avg');
+});
+
+it('excludes voided rounds from trends', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    // End first round
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    $round = Round::where('question_id', $question->id)->where('status', 'ended')->first();
+    $round->update([
+        'occurred_at' => '2026-01-01 12:00:00',
+        'ended_at' => '2026-01-21 12:00:00',
+        'status' => 'voided',
+    ]);
+
+    // No ended rounds remain (voided is excluded), so no trends section
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertDontSee('Trends');
+});
+
+it('shows longer than guessed in accuracy summary', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->set('guess', '2 weeks')
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    // 21 days — 7 days longer than 2 weeks (14 days)
+    $round = Round::where('question_id', $question->id)->first();
+    $round->update([
+        'occurred_at' => '2026-03-01 12:00:00',
+        'ended_at' => '2026-03-22 12:00:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('last')
+        ->assertSee('7 days longer');
+});
+
 it('redirects to start-round when no active round and record is called', function () {
     $user = User::factory()->create();
 
