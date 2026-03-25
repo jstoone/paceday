@@ -22,13 +22,12 @@
 | **Usage log** | An entry recorded against a "how many" question — a single occurrence | Tick, tally, count |
 | **Period** | The declared time window for a "how many" question (daily, weekly, monthly) that defines lazy round boundaries | Cadence, interval, frequency, timeframe |
 
-## Predictions & observations
+## Predictions & observations (updated)
 
 | Term | Definition | Aliases to avoid |
 |------|-----------|-----------------|
-| **Guess** | The user's prediction, stored on the question and updateable at any time — compared against actual round outcomes | Estimate, prediction, forecast |
-| **Note** | Optional freeform text attached to any entry, round start, round end, or void | Comment, remark, memo |
-| **Annotation** | A timestamped note on the question itself, not tied to a specific round | Comment, observation, log entry |
+| **Guess** | The user's prediction for a question, stored on QuestionState and updateable at any time via its own event — compared against actual round outcomes | Estimate, prediction, forecast |
+| **Note** | A timestamped piece of freeform text on a question's timeline — its own event, no direct relation to rounds or other entities | Comment, remark, memo, annotation |
 
 ## Round lifecycle
 
@@ -46,18 +45,28 @@
 | **Recording surface** | Any interface scoped to recording entries (the tag URL, the record button) — write-only, not a reading surface | Input, form, endpoint |
 | **Question page** | The dashboard for a question at `/q/{id}` — shows current state, round history, trends, and the primary action button | Dashboard, detail page, tracker page |
 | **Record button** | The single primary action on the question page — changes color and text based on state | Action button, CTA |
+| **Timeline** | The unified chronological view on the question page — shows rounds, notes, guess changes, and voids newest-first | History, feed, activity log |
 
-## Commands
+## Actions (updated)
 
 | Term | Definition | Aliases to avoid |
 |------|-----------|-----------------|
-| **AskQuestion** | Create a new question with label, thing, unit, amount, and type | CreateItem, AddTracker |
-| **StartRound** | Begin a new round on a "how long" question — the check-in | CheckIn, OpenRound, Begin |
-| **RecordEntry** | The generic quick-tap command — the system dispatches to the right outcome based on question type and round state | Tap, Log, Track |
-| **VoidRound** | Mark a round as invalid with an optional note | DeleteRound, CancelRound |
-| **AnnotateQuestion** | Add a timestamped note to a question outside of any round | AddNote, Comment |
-| **UpdateGuess** | Change the current guess on a question | ReviseEstimate, SetPrediction |
-| **RetireQuestion** | Mark a question as no longer actively tracked | Archive, Delete, Deactivate |
+| **Action** | An application-level orchestrator that encapsulates a domain operation — fires one or more events, calls `Verbs::commit()`, and is the only public API that Livewire touches | Command, service, handler |
+| **AskQuestion** | Action: fires `QuestionAsked` + `RoundStarted` + optionally `GuessUpdated` + optionally `NoteAdded` | CreateItem, AddTracker |
+| **StartRound** | Action: fires `RoundStarted` + optionally `GuessUpdated` + optionally `NoteAdded` — the check-in | CheckIn, OpenRound, Begin |
+| **EndRound** | Action: fires `RoundEnded` + optionally `NoteAdded` — the check-out | CheckOut, CloseRound, Finish |
+| **RecordEntry** | The generic quick-tap action — reads question type and round state, dispatches to the right action | Tap, Log, Track |
+| **VoidRound** | Action: fires `RoundVoided` + optionally `NoteAdded` | DeleteRound, CancelRound |
+| **UpdateGuess** | Action: fires `GuessUpdated` — changes the current guess on a question | ReviseEstimate, SetPrediction |
+| **AddNote** | Action: fires `NoteAdded` — adds a standalone note to a question's timeline | AnnotateQuestion, Comment |
+| **RetireQuestion** | Action: fires `QuestionRetired` — marks a question as no longer actively tracked | Archive, Delete, Deactivate |
+
+## Events (new)
+
+| Term | Definition | Aliases to avoid |
+|------|-----------|-----------------|
+| **NoteAdded** | Event carrying `question_id`, `body`, `occurred_at`, `recorded_at` — projects to `timeline_entries` | AnnotationCreated, NoteCreated |
+| **GuessUpdated** | Event carrying `question_id`, `guess` — mutates QuestionState, projects to `questions` and `timeline_entries` | GuessMade, PredictionSet |
 
 ## Tags
 
@@ -67,14 +76,21 @@
 | **LinkTag** | Associate a tag code with a question | ConnectTag, AssignTag, CoupleTag |
 | **UnlinkTag** | Remove the association between a tag and a question | DisconnectTag, DetachTag |
 
-## Relationships
+## Projections (new)
+
+| Term | Definition | Aliases to avoid |
+|------|-----------|-----------------|
+| **Timeline entry** | A row in `timeline_entries` — the read model for the question page timeline, projected from domain events | Activity, history item, log entry |
+
+## Relationships (updated)
 
 - A **Question** has zero or many **Rounds**
 - A **Round** belongs to exactly one **Question**
 - A **Round** has zero or many **Entries** (for "how many" with lazy rounds)
 - A "how long" **Round** has exactly one **Check-in** and at most one **Check-out**
-- A **Question** has zero or one current **Guess**
-- A **Question** has zero or many **Annotations**
+- A **Question** has zero or one current **Guess** (stored on QuestionState, updateable via **GuessUpdated**)
+- A **Question** has zero or many **Notes** (each is its own event, no relation to rounds)
+- A **Question** has zero or many **Timeline entries** (projected from all domain events)
 - A **Tag** is linked to zero or one **Question** (and can be relinked)
 - A **Question** can have zero or many **Tags** linked to it
 
@@ -84,21 +100,30 @@
 - **Round** is a separate aggregate — holds its own lifecycle (active/ended/voided), linked to a question by questionId
 - **Tag** is a lightweight entity — just a code and a questionId reference
 
-## Example dialogue
+## Architectural conventions (new)
 
-> **Dev:** "When a user scans a **Tag**, what happens?"
-> **Domain expert:** "We resolve the **Tag** code to a **Question**. If it's a 'how long' **Question** with an **Active Round**, we end the **Round** — that's the **Check-out**. If there's no **Active Round**, we redirect to the **StartRound** form."
-> **Dev:** "And for 'how many'?"
-> **Domain expert:** "We just **RecordEntry**. The **Round** is lazy — it's derived from the **Period** on the read side. The user never manually starts or ends it."
-> **Dev:** "What if someone updates their **Guess** after a **Round** has ended?"
-> **Domain expert:** "The **Guess** lives on the **Question**, not the **Round**. We always compare against the latest **Guess**. We're not building an audit trail — if they correct a typo, it should just flow through."
-> **Dev:** "Can a **Tag** be moved between **Questions**?"
-> **Domain expert:** "Yes. **UnlinkTag** then **LinkTag** to the new **Question**. The physical sticker survives across **Questions** — that's the point."
+- **Actions** are the only public API for domain operations. Livewire components call actions, never events or Verbs directly.
+- **Events** are fired inside actions. An action may fire multiple events (e.g. `RoundStarted` + `GuessUpdated` + `NoteAdded`).
+- **Actions call `Verbs::commit()`** at the end, so callers don't need to know about event sourcing mechanics.
+- **Notes and guesses are always separate events**, never inline properties on other events like `RoundStarted` or `RoundEnded`.
+
+## Example dialogue (updated)
+
+> **Dev:** "When a user ends a round and adds a note, how does that work?"
+> **Domain expert:** "The **EndRound** action fires two events: **RoundEnded** to close the round, and **NoteAdded** to put the note on the timeline. The note doesn't belong to the round — it's just a timestamped entry on the **Question**'s **Timeline**."
+> **Dev:** "So if I look at the timeline, the round ending and the note are separate entries that happen to be at the same time?"
+> **Domain expert:** "Exactly. The **Timeline** is chronological. A **Note** added during a check-out appears right next to the round ending, but they're independent. You could also add a **Note** without any round action."
+> **Dev:** "And the **Guess** works the same way?"
+> **Domain expert:** "Yes. When you start a round with a guess, the **StartRound** action fires **RoundStarted** plus **GuessUpdated**. The guess lives on the **Question**, not the **Round**. You can update it anytime via **UpdateGuess** — it's always the latest value."
+> **Dev:** "What does Livewire know about all this?"
+> **Domain expert:** "Nothing about events. Livewire calls an **Action** with data, gets back what it needs. The action handles events, commits, everything. Livewire is just a thin UI shell."
 
 ## Flagged ambiguities
 
-- **"Entry" vs "Round"**: An **Entry** is a single recorded event (a tap, a log). A **Round** is a grouping of entries or a lifecycle (start→end). For "how long" questions, a **Round** contains exactly two implicit entries (check-in and check-out). For "how many" questions, a **Round** is a lazy time bucket that contains many **Entries**. Don't confuse the two — a user "records an entry," they don't "record a round."
-- **"Start round" vs "Check-in"**: These are the same action — **StartRound** is the command name, **Check-in** is the domain language for the user-facing concept. Use **Check-in** in UI copy, **StartRound** in code.
-- **"Description" was dropped**: Early in the conversation we had a per-round description field (e.g. "30 caffeinated capsules"). This was replaced by making the **Question** itself carry the full context (thing + unit + amount). Rounds no longer have descriptions — the **Question** label says it all.
-- **"Snapshot" should not be used**: This is an overloaded term in event sourcing. When referring to the guess that was active when a round ended, say "the guess at the time" or "the current guess" — never "snapshot."
-- **"Item" should not be used**: Early conversations used "Item" as the aggregate name. This was replaced by **Question** to match the domain — Paceday answers questions, it doesn't manage items.
+- **"Entry" vs "Round"**: An **Entry** is a single recorded event (a tap, a log). A **Round** is a grouping of entries or a lifecycle (start->end). For "how long" questions, a **Round** contains exactly two implicit entries (check-in and check-out). For "how many" questions, a **Round** is a lazy time bucket that contains many **Entries**. Don't confuse the two — a user "records an entry," they don't "record a round."
+- **"Start round" vs "Check-in"**: These are the same action — **StartRound** is the code name, **Check-in** is the domain language for the user-facing concept. Use **Check-in** in UI copy, **StartRound** in code.
+- **"Annotation" is retired (updated)**: Previously a separate concept for "note not tied to a round." Since notes have no relation to rounds at all, **Annotation** is now just an alias to avoid. Use **Note** everywhere.
+- **"Command" vs "Action" (new)**: The PRD uses "Command" (DDD terminology). The codebase uses **Action** (Laravel convention). They mean the same thing. Use **Action** in code and conversation. Avoid "Command" to prevent confusion with Artisan commands.
+- **"Description" was dropped**: Early in the conversation we had a per-round description field. This was replaced by making the **Question** itself carry the full context (thing + unit + amount).
+- **"Snapshot" should not be used**: This is an overloaded term in event sourcing. When referring to the guess at a point in time, say "the guess at the time" or "the current guess" — never "snapshot."
+- **"Item" should not be used**: Early conversations used "Item" as the aggregate name. This was replaced by **Question**.

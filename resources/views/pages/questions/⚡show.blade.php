@@ -1,15 +1,57 @@
 <?php
 
+use App\Domain\Tracking\Actions\EndRound;
 use App\Models\Question;
+use Carbon\CarbonImmutable;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Question')] class extends Component {
     public Question $question;
 
+    public ?string $note = null;
+
+    public ?string $occurred_at = null;
+
     public function mount(string $questionId): void
     {
         $this->question = Question::with('activeRound')->findOrFail($questionId);
+        $this->occurred_at = now()->format('Y-m-d');
+    }
+
+    public function record(): void
+    {
+        if (! $this->question->activeRound) {
+            $this->redirect(
+                route('questions.start-round', $this->question->id),
+                navigate: true,
+            );
+
+            return;
+        }
+
+        $this->validate([
+            'note' => ['nullable', 'string', 'max:1000'],
+            'occurred_at' => ['required', 'date', 'before_or_equal:today'],
+        ]);
+
+        app(EndRound::class)->execute(
+            round_id: $this->question->active_round_id,
+            occurred_at: CarbonImmutable::parse($this->occurred_at),
+            note: $this->note,
+        );
+
+        $this->question->refresh()->load('activeRound');
+        $this->note = null;
+        $this->occurred_at = now()->format('Y-m-d');
+    }
+
+    public function startNewRound(): void
+    {
+        $this->redirect(
+            route('questions.start-round', $this->question->id),
+            navigate: true,
+        );
     }
 }; ?>
 
@@ -27,6 +69,11 @@ new #[Title('Question')] class extends Component {
                 <p class="mt-1 text-sm text-bark-light">
                     {{ $question->amount }} {{ $question->unit }} of {{ $question->thing }}
                 </p>
+                @if ($question->guess)
+                    <p class="mt-1 text-sm text-bark-light">
+                        Guess: <span class="font-medium text-bark">{{ $question->guess }}</span>
+                    </p>
+                @endif
             </div>
 
             @if ($question->activeRound)
@@ -43,16 +90,6 @@ new #[Title('Question')] class extends Component {
                                 &middot;
                                 Day {{ (int) $question->activeRound->occurred_at->diffInDays(now()) + 1 }}
                             </p>
-                            @if ($question->activeRound->guess)
-                                <p class="text-sm text-bark-light">
-                                    Guess: <span class="font-medium text-bark">{{ $question->activeRound->guess }}</span>
-                                </p>
-                            @endif
-                            @if ($question->activeRound->note)
-                                <p class="text-sm italic text-bark-light">
-                                    {{ $question->activeRound->note }}
-                                </p>
-                            @endif
                         </div>
 
                         {{-- Day counter --}}
@@ -65,18 +102,42 @@ new #[Title('Question')] class extends Component {
                     </div>
                 </div>
 
-                <flux:button variant="primary" class="w-full py-3 text-base" disabled>
-                    Done — ran out!
-                </flux:button>
-                <p class="text-center text-xs text-bark-light">
-                    The record button will be functional in the next update.
-                </p>
+                {{-- Recording form --}}
+                <div class="paceday-card space-y-4" x-data="{ showDetails: false }">
+                    {{-- Date display / picker toggle --}}
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-bark-light">Ended on</span>
+                        <flux:date-picker wire:model="occurred_at" max="today">
+                            <x-slot name="trigger">
+                                <flux:date-picker.button class="!rounded-full !bg-sand !text-bark !shadow-none !border-0 hover:!bg-zinc-200 !px-3 !py-1 !text-sm !font-medium" />
+                            </x-slot>
+                        </flux:date-picker>
+                    </div>
+
+                    {{-- Optional note --}}
+                    <button
+                        x-show="!showDetails"
+                        x-on:click="showDetails = true"
+                        type="button"
+                        class="text-sm font-medium text-bark-light transition hover:text-bark"
+                    >
+                        + Add a note
+                    </button>
+
+                    <div x-show="showDetails" x-cloak>
+                        <flux:textarea wire:model="note" placeholder="Any notes about this round..." rows="2" />
+                    </div>
+
+                    <flux:button wire:click="record" variant="primary" class="w-full py-3 text-base">
+                        Done — ran out!
+                    </flux:button>
+                </div>
             @else
                 <div class="paceday-card py-8 text-center">
                     <p class="text-bark-light">No active round</p>
                 </div>
 
-                <flux:button variant="primary" class="w-full py-3 text-base" disabled>
+                <flux:button wire:click="startNewRound" class="w-full py-3 text-base !bg-teal-600 !text-white !shadow-md !shadow-teal-600/25 hover:!bg-teal-700 hover:!shadow-lg hover:!shadow-teal-600/30 hover:!-translate-y-px transition-all">
                     Start a new round
                 </flux:button>
             @endif

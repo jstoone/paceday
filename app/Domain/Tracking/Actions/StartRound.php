@@ -4,42 +4,30 @@ namespace App\Domain\Tracking\Actions;
 
 use App\Domain\Tracking\Events\GuessUpdated;
 use App\Domain\Tracking\Events\NoteAdded;
-use App\Domain\Tracking\Events\QuestionAsked;
 use App\Domain\Tracking\Events\RoundStarted;
 use Thunk\Verbs\Facades\Verbs;
 
-class AskQuestion
+class StartRound
 {
     public function execute(
-        int $user_id,
-        string $thing,
-        string $unit,
-        int $amount,
+        string $question_id,
         ?string $guess = null,
         ?string $note = null,
-    ): QuestionAsked {
-        $event = verb(new QuestionAsked(
-            user_id: $user_id,
-            label: "How long does {$amount} {$unit} of {$thing} last?",
-            thing: $thing,
-            unit: $unit,
-            amount: $amount,
-        ));
-
-        verb(new RoundStarted(
-            question_id: $event->question_id,
+    ): RoundStarted {
+        $event = verb(new RoundStarted(
+            question_id: $question_id,
         ));
 
         if ($guess !== null) {
             verb(new GuessUpdated(
-                question_id: $event->question_id,
+                question_id: $question_id,
                 guess: $guess,
             ));
         }
 
         if ($note !== null) {
             verb(new NoteAdded(
-                question_id: $event->question_id,
+                question_id: $question_id,
                 body: $note,
             ));
         }

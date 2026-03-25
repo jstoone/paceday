@@ -12,56 +12,57 @@ use Carbon\CarbonImmutable;
 use Thunk\Verbs\Attributes\Hooks\Once;
 use Thunk\Verbs\Event;
 
-class RoundStarted extends Event
+class RoundEnded extends Event
 {
     public function __construct(
+        #[StateUlid(RoundState::class)]
+        public string $round_id,
         #[StateUlid(QuestionState::class)]
         public string $question_id,
-        #[StateUlid(RoundState::class)]
-        public ?string $round_id = null,
         public ?CarbonImmutable $occurred_at = null,
+        public ?CarbonImmutable $recorded_at = null,
     ) {
         $this->occurred_at ??= now()->toImmutable();
+        $this->recorded_at ??= now()->toImmutable();
     }
 
-    public function validateQuestion(QuestionState $question): void
+    public function validateRound(RoundState $round): void
     {
         $this->assert(
-            $question->label !== '',
-            'Cannot start a round on a question that does not exist.',
+            $round->status === 'active',
+            'Cannot end a round that is not active.',
         );
     }
 
     public function applyToRound(RoundState $round): void
     {
-        $round->question_id = $this->question_id;
-        $round->status = 'active';
-        $round->occurred_at = $this->occurred_at;
+        $round->status = 'ended';
+        $round->ended_at = $this->occurred_at;
+        $round->recorded_at = $this->recorded_at;
     }
 
     public function applyToQuestion(QuestionState $question): void
     {
-        $question->active_round_id = $this->round_id;
+        $question->active_round_id = null;
     }
 
     #[Once]
     public function handle(): void
     {
-        Round::create([
-            'id' => $this->round_id,
-            'question_id' => $this->question_id,
-            'status' => 'active',
-            'occurred_at' => $this->occurred_at,
+        Round::where('id', $this->round_id)->update([
+            'status' => 'ended',
+            'ended_at' => $this->occurred_at,
+            'recorded_at' => $this->recorded_at,
         ]);
 
-        Question::where('id', $this->question_id)
-            ->update(['active_round_id' => $this->round_id]);
+        Question::where('active_round_id', $this->round_id)
+            ->update(['active_round_id' => null]);
 
         TimelineEntry::create([
             'question_id' => $this->question_id,
-            'type' => 'round_started',
+            'type' => 'round_ended',
             'occurred_at' => $this->occurred_at,
-            'recorded_at' => $this->occurred_at,
+            'recorded_at' => $this->recorded_at,
             'metadata' => ['round_id' => $this->round_id],
         ]);
     }

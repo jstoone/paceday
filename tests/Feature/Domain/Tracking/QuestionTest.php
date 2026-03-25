@@ -3,9 +3,9 @@
 use App\Domain\Tracking\Actions\AskQuestion;
 use App\Domain\Tracking\Events\QuestionAsked;
 use App\Domain\Tracking\States\QuestionState;
-use App\Domain\Tracking\States\RoundState;
 use App\Models\Question;
 use App\Models\Round;
+use App\Models\TimelineEntry;
 use App\Models\User;
 use Thunk\Verbs\Facades\Verbs;
 
@@ -80,7 +80,6 @@ describe('AskQuestion action', function () {
             unit: 'capsules',
             amount: 40,
         );
-        Verbs::commit();
 
         $question = Question::find($event->question_id);
 
@@ -94,7 +93,7 @@ describe('AskQuestion action', function () {
             ->and($round->question_id)->toBe($event->question_id);
     });
 
-    it('passes guess and note to the round', function () {
+    it('stores guess on question and note as timeline entry', function () {
         $user = User::factory()->create();
         $action = new AskQuestion;
 
@@ -106,13 +105,19 @@ describe('AskQuestion action', function () {
             guess: '3 weeks',
             note: 'Starting with Nespresso pods',
         );
-        Verbs::commit();
 
+        $question = Question::find($event->question_id);
         $state = QuestionState::load($event->question_id);
-        $round = Round::find($state->active_round_id);
 
-        expect($round->guess)->toBe('3 weeks')
-            ->and($round->note)->toBe('Starting with Nespresso pods');
+        expect($question->guess)->toBe('3 weeks')
+            ->and($state->guess)->toBe('3 weeks');
+
+        $noteEntry = TimelineEntry::where('question_id', $event->question_id)
+            ->where('type', 'note')
+            ->first();
+
+        expect($noteEntry)->not->toBeNull()
+            ->and($noteEntry->body)->toBe('Starting with Nespresso pods');
     });
 
     it('works without guess and note', function () {
@@ -125,12 +130,15 @@ describe('AskQuestion action', function () {
             unit: 'rolls',
             amount: 8,
         );
-        Verbs::commit();
 
+        $question = Question::find($event->question_id);
         $state = QuestionState::load($event->question_id);
-        $roundState = RoundState::load($state->active_round_id);
 
-        expect($roundState->guess)->toBeNull()
-            ->and($roundState->note)->toBeNull();
+        expect($question->guess)->toBeNull()
+            ->and($state->guess)->toBeNull();
+
+        expect(TimelineEntry::where('question_id', $event->question_id)
+            ->where('type', 'note')
+            ->exists())->toBeFalse();
     });
 });

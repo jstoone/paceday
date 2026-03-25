@@ -2,6 +2,7 @@
 
 use App\Models\Question;
 use App\Models\Round;
+use App\Models\TimelineEntry;
 use App\Models\User;
 use Livewire\Livewire;
 
@@ -44,7 +45,7 @@ it('creates a question and round when submitting valid data', function () {
         ->and($round->status)->toBe('active');
 });
 
-it('creates a question with guess and note', function () {
+it('creates a question with guess and note as separate events', function () {
     $user = User::factory()->create();
 
     Livewire::actingAs($user)
@@ -59,10 +60,22 @@ it('creates a question with guess and note', function () {
         ->assertRedirect();
 
     $question = Question::where('user_id', $user->id)->first();
-    $round = Round::where('question_id', $question->id)->first();
 
-    expect($round->guess)->toBe('3 weeks')
-        ->and($round->note)->toBe('Nespresso pods');
+    expect($question->guess)->toBe('3 weeks');
+
+    $noteEntry = TimelineEntry::where('question_id', $question->id)
+        ->where('type', 'note')
+        ->first();
+
+    expect($noteEntry)->not->toBeNull()
+        ->and($noteEntry->body)->toBe('Nespresso pods');
+
+    $guessEntry = TimelineEntry::where('question_id', $question->id)
+        ->where('type', 'guess_updated')
+        ->first();
+
+    expect($guessEntry)->not->toBeNull()
+        ->and($guessEntry->body)->toBe('3 weeks');
 });
 
 it('validates required fields', function () {

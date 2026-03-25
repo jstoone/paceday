@@ -73,9 +73,9 @@ new #[Title('Dashboard')] class extends Component {
                                             <span class="size-1.5 rounded-full bg-blue-500 animate-pulse"></span>
                                             Day {{ (int) $question->activeRound->occurred_at->diffInDays(now()) + 1 }}
                                         </span>
-                                        @if ($question->activeRound->guess)
+                                        @if ($question->guess)
                                             <span class="mt-1 text-xs text-bark-light">
-                                                Guess: {{ $question->activeRound->guess }}
+                                                Guess: {{ $question->guess }}
                                             </span>
                                         @endif
                                     </div>

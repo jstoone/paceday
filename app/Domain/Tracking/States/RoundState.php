@@ -13,7 +13,7 @@ class RoundState extends State
 
     public CarbonImmutable $occurred_at;
 
-    public ?string $guess = null;
+    public ?CarbonImmutable $ended_at = null;
 
-    public ?string $note = null;
+    public ?CarbonImmutable $recorded_at = null;
 }

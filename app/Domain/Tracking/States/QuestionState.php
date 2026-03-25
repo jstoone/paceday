@@ -18,5 +18,7 @@ class QuestionState extends State
 
     public string $question_type = 'how_long';
 
+    public ?string $guess = null;
+
     public ?string $active_round_id = null;
 }

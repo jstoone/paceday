@@ -5,7 +5,6 @@ namespace Database\Factories;
 use App\Models\Question;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Str;
 
 /**
  * @extends Factory<Question>
@@ -19,7 +18,6 @@ class QuestionFactory extends Factory
         $thing = fake()->randomElement(['coffee', 'toilet paper', 'dish soap', 'trash bags', 'toothpaste']);
 
         return [
-            'id' => Str::ulid()->toBase32(),
             'user_id' => User::factory(),
             'label' => "How long does {$amount} {$unit} of {$thing} last?",
             'thing' => $thing,

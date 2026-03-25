@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\QuestionFactory;
+use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,11 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Question extends Model
 {
     /** @use HasFactory<QuestionFactory> */
-    use HasFactory;
-
-    public $incrementing = false;
-
-    protected $keyType = 'string';
+    use HasFactory, HasUlids;
 
     public function user(): BelongsTo
     {
@@ -30,5 +27,10 @@ class Question extends Model
     public function activeRound(): BelongsTo
     {
         return $this->belongsTo(Round::class, 'active_round_id');
+    }
+
+    public function timelineEntries(): HasMany
+    {
+        return $this->hasMany(TimelineEntry::class);
     }
 }
