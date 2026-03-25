@@ -19,6 +19,7 @@ class Round extends Model
             'occurred_at' => 'immutable_datetime',
             'ended_at' => 'immutable_datetime',
             'recorded_at' => 'immutable_datetime',
+            'voided_at' => 'immutable_datetime',
         ];
     }
 

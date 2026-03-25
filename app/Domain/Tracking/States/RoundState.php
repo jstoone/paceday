@@ -16,4 +16,6 @@ class RoundState extends State
     public ?CarbonImmutable $ended_at = null;
 
     public ?CarbonImmutable $recorded_at = null;
+
+    public ?CarbonImmutable $voided_at = null;
 }

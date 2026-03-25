@@ -1,8 +1,13 @@
 <?php
 
+use App\Domain\Tracking\Actions\AddNote;
+use App\Domain\Tracking\Actions\AdjustRoundEnd;
+use App\Domain\Tracking\Actions\AdjustRoundStart;
 use App\Domain\Tracking\Actions\EndRound;
 use App\Domain\Tracking\Actions\UpdateGuess;
+use App\Domain\Tracking\Actions\VoidRound;
 use App\Models\Question;
+use App\Models\Round;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -17,6 +22,8 @@ new #[Title('Question')] class extends Component {
     public ?string $occurred_at = null;
 
     public ?string $guess = null;
+
+    public ?string $annotation = null;
 
     public function mount(string $questionId): void
     {
@@ -61,12 +68,11 @@ new #[Title('Question')] class extends Component {
         ];
     }
 
-    /** @return array<int, array{round: \App\Models\Round, notes: Collection}> */
     #[Computed]
     public function timeline(): array
     {
         $rounds = $this->question->rounds()
-            ->where('status', 'ended')
+            ->whereIn('status', ['ended', 'voided'])
             ->latest('occurred_at')
             ->get();
 
@@ -79,19 +85,34 @@ new #[Title('Question')] class extends Component {
             ->latest('occurred_at')
             ->get();
 
-        $roundItems = $rounds->map(function ($round) use ($notes) {
+        $matchedNoteIds = collect();
+
+        $roundItems = $rounds->map(function ($round) use ($notes, &$matchedNoteIds) {
             $roundNotes = $notes->filter(
                 fn ($note) => $note->occurred_at->equalTo($round->occurred_at)
                     || ($round->ended_at && $note->occurred_at->equalTo($round->ended_at))
+                    || ($round->voided_at && $note->occurred_at->equalTo($round->voided_at))
             );
+
+            $matchedNoteIds = $matchedNoteIds->merge($roundNotes->pluck('id'));
+
+            $sortDate = $round->voided_at ?? $round->ended_at ?? $round->occurred_at;
 
             return [
                 'type' => 'round',
                 'round' => $round,
                 'notes' => $roundNotes,
-                'sort_date' => $round->ended_at ?? $round->occurred_at,
+                'sort_date' => $sortDate,
             ];
         });
+
+        $standaloneNotes = $notes->reject(fn ($note) => $matchedNoteIds->contains($note->id));
+
+        $standaloneNoteItems = $standaloneNotes->map(fn ($note) => [
+            'type' => 'note',
+            'entry' => $note,
+            'sort_date' => $note->occurred_at,
+        ]);
 
         $guessItems = $guessEntries->map(fn ($entry) => [
             'type' => 'guess_updated',
@@ -99,12 +120,11 @@ new #[Title('Question')] class extends Component {
             'sort_date' => $entry->occurred_at,
         ]);
 
-        $merged = $roundItems->concat($guessItems)
+        return $roundItems->concat($standaloneNoteItems)
+            ->concat($guessItems)
             ->sortByDesc('sort_date')
             ->values()
             ->all();
-
-        return $merged;
     }
 
     public function record(): void
@@ -152,6 +172,56 @@ new #[Title('Question')] class extends Component {
         );
 
         $this->question->refresh();
+        unset($this->timeline);
+        unset($this->trends);
+    }
+
+    public function voidRound(string $roundId, ?string $note = null): void
+    {
+        app(VoidRound::class)->execute(
+            round_id: $roundId,
+            note: $note ?: null,
+        );
+
+        $this->question->refresh()->load('activeRound');
+        unset($this->timeline);
+        unset($this->trends);
+    }
+
+    public function addNote(): void
+    {
+        $this->validate([
+            'annotation' => ['required', 'string', 'max:1000'],
+        ]);
+
+        app(AddNote::class)->execute(
+            question_id: $this->question->id,
+            body: $this->annotation,
+        );
+
+        $this->annotation = null;
+        unset($this->timeline);
+    }
+
+    public function adjustRoundDates(string $roundId, ?string $startDate = null, ?string $endDate = null): void
+    {
+        $round = Round::findOrFail($roundId);
+
+        if ($startDate && $startDate !== $round->occurred_at->format('Y-m-d')) {
+            app(AdjustRoundStart::class)->execute(
+                round_id: $roundId,
+                new_occurred_at: CarbonImmutable::parse($startDate),
+            );
+        }
+
+        if ($endDate && $round->ended_at && $endDate !== $round->ended_at->format('Y-m-d')) {
+            app(AdjustRoundEnd::class)->execute(
+                round_id: $roundId,
+                new_ended_at: CarbonImmutable::parse($endDate),
+            );
+        }
+
+        $this->question->refresh()->load('activeRound');
         unset($this->timeline);
         unset($this->trends);
     }
@@ -315,6 +385,45 @@ new #[Title('Question')] class extends Component {
                         Done — ran out!
                     </flux:button>
                 </div>
+
+                {{-- Void active round --}}
+                <div x-data="{ confirming: false, note: '' }">
+                    <button
+                        x-show="!confirming"
+                        x-on:click="confirming = true"
+                        type="button"
+                        class="text-sm font-medium text-bark-light transition hover:text-red-600"
+                    >
+                        Void this round
+                    </button>
+
+                    <div x-show="confirming" x-cloak class="paceday-card space-y-3">
+                        <p class="text-sm font-medium text-bark">Void this round?</p>
+                        <p class="text-xs text-bark-light">The round will be marked as invalid and excluded from trends.</p>
+                        <textarea
+                            x-model="note"
+                            placeholder="Reason for voiding (optional)..."
+                            rows="2"
+                            class="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-bark shadow-sm focus:border-amber-300 focus:ring-amber-300"
+                        ></textarea>
+                        <div class="flex items-center gap-2">
+                            <flux:button
+                                x-on:click="$wire.voidRound('{{ $question->active_round_id }}', note); confirming = false; note = ''"
+                                variant="danger"
+                                size="sm"
+                            >
+                                Void round
+                            </flux:button>
+                            <button
+                                x-on:click="confirming = false; note = ''"
+                                type="button"
+                                class="text-xs font-medium text-bark-light transition hover:text-bark"
+                            >
+                                cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
             @else
                 <div class="paceday-card py-8 text-center">
                     <p class="text-bark-light">No active round</p>
@@ -324,6 +433,40 @@ new #[Title('Question')] class extends Component {
                     Start a new round
                 </flux:button>
             @endif
+
+            {{-- Add a note --}}
+            <div class="paceday-card space-y-3" x-data="{ open: false }">
+                <button
+                    x-show="!open"
+                    x-on:click="open = true"
+                    type="button"
+                    class="text-sm font-medium text-bark-light transition hover:text-bark"
+                >
+                    + Add a note
+                </button>
+
+                <div x-show="open" x-cloak class="space-y-3">
+                    <flux:textarea wire:model="annotation" placeholder="Add a note to this question..." rows="2" />
+                    @error('annotation') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+                    <div class="flex items-center gap-2">
+                        <flux:button
+                            wire:click="addNote"
+                            variant="primary"
+                            size="sm"
+                            x-on:click="if ($wire.annotation) $nextTick(() => open = false)"
+                        >
+                            Save note
+                        </flux:button>
+                        <button
+                            x-on:click="open = false; $wire.set('annotation', null)"
+                            type="button"
+                            class="text-xs font-medium text-bark-light transition hover:text-bark"
+                        >
+                            cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             {{-- Trends --}}
             @if ($this->trends)
@@ -369,27 +512,39 @@ new #[Title('Question')] class extends Component {
             {{-- Timeline --}}
             @if (count($this->timeline) > 0)
                 <div class="space-y-3">
-                    <h2 class="text-lg font-bold text-bark">Previous rounds</h2>
+                    <h2 class="text-lg font-bold text-bark">Timeline</h2>
 
                     @foreach ($this->timeline as $entry)
                         @if ($entry['type'] === 'round')
                             @php
                                 $round = $entry['round'];
                                 $notes = $entry['notes'];
-                                $days = (int) $round->occurred_at->diffInDays($round->ended_at);
+                                $isVoided = $round->status === 'voided';
+                                $days = $round->ended_at ? (int) $round->occurred_at->diffInDays($round->ended_at) : null;
                                 $guessDays = self::parseDurationToDays($question->guess);
                             @endphp
 
-                            <div class="paceday-card">
+                            <div
+                                class="paceday-card {{ $isVoided ? 'opacity-50' : '' }}"
+                                x-data="{ showActions: false, adjusting: false, voiding: false, voidNote: '', startDate: '{{ $round->occurred_at->format('Y-m-d') }}', endDate: '{{ $round->ended_at?->format('Y-m-d') }}' }"
+                                wire:key="round-{{ $round->id }}"
+                            >
+                                {{-- Round content --}}
                                 <div class="flex items-start justify-between">
-                                    <div>
+                                    <div class="{{ $isVoided ? 'line-through' : '' }}">
                                         <p class="text-sm font-medium text-bark">
-                                            {{ $round->occurred_at->format('M j') }} &mdash; {{ $round->ended_at->format('M j') }}
+                                            @if ($days !== null)
+                                                {{ $round->occurred_at->format('M j') }} &mdash; {{ $round->ended_at->format('M j') }}
+                                            @else
+                                                {{ $round->occurred_at->format('M j') }} &mdash; voided
+                                            @endif
                                         </p>
-                                        <p class="mt-0.5 text-sm text-bark-light">
-                                            {{ $days }} {{ Str::plural('day', $days) }}
-                                        </p>
-                                        @if ($question->guess && $guessDays !== null)
+                                        @if ($days !== null)
+                                            <p class="mt-0.5 text-sm text-bark-light">
+                                                {{ $days }} {{ Str::plural('day', $days) }}
+                                            </p>
+                                        @endif
+                                        @if (!$isVoided && $question->guess && $guessDays !== null && $days !== null)
                                             @php
                                                 $diff = $days - $guessDays;
                                             @endphp
@@ -403,32 +558,145 @@ new #[Title('Question')] class extends Component {
                                                     <span class="font-medium text-red-600">&mdash; ran out {{ abs($diff) }} {{ Str::plural('day', abs($diff)) }} early</span>
                                                 @endif
                                             </p>
-                                        @elseif ($question->guess)
+                                        @elseif (!$isVoided && $question->guess)
                                             <p class="mt-1 text-xs text-bark-light">
                                                 Guessed {{ $question->guess }}
                                             </p>
                                         @endif
                                     </div>
 
-                                    <div class="ml-4 flex flex-col items-center rounded-2xl bg-sand px-3 py-2">
-                                        <span class="text-xl font-bold text-bark" style="font-family: var(--font-heading)">
-                                            {{ $days }}
-                                        </span>
-                                        <span class="text-[10px] font-medium text-bark-light">{{ Str::plural('day', $days) }}</span>
+                                    <div class="ml-4 flex flex-col items-center">
+                                        @if ($isVoided)
+                                            <span class="inline-flex items-center rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-medium text-bark-light">
+                                                Voided
+                                            </span>
+                                        @elseif ($days !== null)
+                                            <div class="flex flex-col items-center rounded-2xl bg-sand px-3 py-2">
+                                                <span class="text-xl font-bold text-bark" style="font-family: var(--font-heading)">
+                                                    {{ $days }}
+                                                </span>
+                                                <span class="text-[10px] font-medium text-bark-light">{{ Str::plural('day', $days) }}</span>
+                                            </div>
+                                        @endif
                                     </div>
                                 </div>
 
-                                @foreach ($notes as $note)
+                                {{-- Notes attached to this round --}}
+                                @foreach ($notes as $roundNote)
                                     <p class="mt-3 border-t border-zinc-100 pt-3 text-sm text-bark-light italic">
-                                        &ldquo;{{ $note->body }}&rdquo;
+                                        &ldquo;{{ $roundNote->body }}&rdquo;
                                     </p>
                                 @endforeach
+
+                                {{-- Actions toggle --}}
+                                @if (!$isVoided)
+                                    <div class="mt-3 border-t border-zinc-100 pt-3">
+                                        <div class="flex items-center gap-3" x-show="!adjusting && !voiding">
+                                            <button
+                                                x-on:click="adjusting = true"
+                                                type="button"
+                                                class="text-xs font-medium text-bark-light transition hover:text-bark"
+                                            >
+                                                Adjust dates
+                                            </button>
+                                            <button
+                                                x-on:click="voiding = true"
+                                                type="button"
+                                                class="text-xs font-medium text-bark-light transition hover:text-red-600"
+                                            >
+                                                Void
+                                            </button>
+                                        </div>
+
+                                        {{-- Adjust dates form --}}
+                                        <div x-show="adjusting" x-cloak class="space-y-3">
+                                            <div class="flex items-center gap-3">
+                                                <div class="flex-1">
+                                                    <label class="text-xs font-medium text-bark-light">Started</label>
+                                                    <input
+                                                        type="date"
+                                                        x-model="startDate"
+                                                        class="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-sm text-bark shadow-sm"
+                                                    />
+                                                </div>
+                                                @if ($round->ended_at)
+                                                    <div class="flex-1">
+                                                        <label class="text-xs font-medium text-bark-light">Ended</label>
+                                                        <input
+                                                            type="date"
+                                                            x-model="endDate"
+                                                            class="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-sm text-bark shadow-sm"
+                                                        />
+                                                    </div>
+                                                @endif
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <flux:button
+                                                    x-on:click="$wire.adjustRoundDates('{{ $round->id }}', startDate, endDate); adjusting = false"
+                                                    variant="primary"
+                                                    size="sm"
+                                                >
+                                                    Save
+                                                </flux:button>
+                                                <button
+                                                    x-on:click="adjusting = false; startDate = '{{ $round->occurred_at->format('Y-m-d') }}'; endDate = '{{ $round->ended_at?->format('Y-m-d') }}'"
+                                                    type="button"
+                                                    class="text-xs font-medium text-bark-light transition hover:text-bark"
+                                                >
+                                                    cancel
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {{-- Void confirmation --}}
+                                        <div x-show="voiding" x-cloak class="space-y-3">
+                                            <p class="text-xs text-bark-light">This round will be marked as invalid and excluded from trends.</p>
+                                            <textarea
+                                                x-model="voidNote"
+                                                placeholder="Reason for voiding (optional)..."
+                                                rows="2"
+                                                class="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-bark shadow-sm focus:border-amber-300 focus:ring-amber-300"
+                                            ></textarea>
+                                            <div class="flex items-center gap-2">
+                                                <flux:button
+                                                    x-on:click="$wire.voidRound('{{ $round->id }}', voidNote); voiding = false; voidNote = ''"
+                                                    variant="danger"
+                                                    size="sm"
+                                                >
+                                                    Void round
+                                                </flux:button>
+                                                <button
+                                                    x-on:click="voiding = false; voidNote = ''"
+                                                    type="button"
+                                                    class="text-xs font-medium text-bark-light transition hover:text-bark"
+                                                >
+                                                    cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endif
+                            </div>
+                        @elseif ($entry['type'] === 'note')
+                            @php
+                                $noteEntry = $entry['entry'];
+                            @endphp
+                            <div class="flex items-center gap-3 rounded-2xl px-4 py-3" wire:key="note-{{ $noteEntry->id }}">
+                                <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+                                    <flux:icon.chat-bubble-left class="size-4 text-bark-light" />
+                                </div>
+                                <div>
+                                    <p class="text-sm text-bark-light italic">
+                                        &ldquo;{{ $noteEntry->body }}&rdquo;
+                                    </p>
+                                    <p class="text-xs text-bark-light">{{ $noteEntry->occurred_at->diffForHumans() }}</p>
+                                </div>
                             </div>
                         @elseif ($entry['type'] === 'guess_updated')
                             @php
                                 $guessEntry = $entry['entry'];
                             @endphp
-                            <div class="flex items-center gap-3 rounded-2xl px-4 py-3">
+                            <div class="flex items-center gap-3 rounded-2xl px-4 py-3" wire:key="guess-{{ $guessEntry->id }}">
                                 <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-50">
                                     <flux:icon.light-bulb class="size-4 text-amber-600" />
                                 </div>

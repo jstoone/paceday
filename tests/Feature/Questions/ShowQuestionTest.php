@@ -145,7 +145,7 @@ it('shows timeline of ended rounds after ending a round', function () {
     $this->actingAs($user)
         ->get(route('questions.show', $question->id))
         ->assertSuccessful()
-        ->assertSee('Previous rounds');
+        ->assertSee('Timeline');
 });
 
 it('shows round duration and dates in timeline', function () {
@@ -174,7 +174,7 @@ it('shows round duration and dates in timeline', function () {
 
     $this->actingAs($user)
         ->get(route('questions.show', $question->id))
-        ->assertSee('Previous rounds')
+        ->assertSee('Timeline')
         ->assertSee('Mar 10')
         ->assertSee('Mar 15')
         ->assertSee('5 days');
@@ -269,7 +269,7 @@ it('does not show timeline section when no ended rounds exist', function () {
     $this->actingAs($user)
         ->get(route('questions.show', $question->id))
         ->assertSuccessful()
-        ->assertDontSee('Previous rounds');
+        ->assertDontSee('Timeline');
 });
 
 it('shows add a guess link when no guess exists', function () {
