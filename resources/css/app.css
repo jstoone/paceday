@@ -8,60 +8,178 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Re-assign Flux's gray of choice... */
-@theme {
-    --color-zinc-50: var(--color-taupe-50);
-    --color-zinc-100: var(--color-taupe-100);
-    --color-zinc-200: var(--color-taupe-200);
-    --color-zinc-300: var(--color-taupe-300);
-    --color-zinc-400: var(--color-taupe-400);
-    --color-zinc-500: var(--color-taupe-500);
-    --color-zinc-600: var(--color-taupe-600);
-    --color-zinc-700: var(--color-taupe-700);
-    --color-zinc-800: var(--color-taupe-800);
-    --color-zinc-900: var(--color-taupe-900);
-    --color-zinc-950: var(--color-taupe-950);
-}
+/* ─── Paceday Design Tokens ─── */
 
 @theme {
-    --color-accent: var(--color-orange-500);
-    --color-accent-content: var(--color-orange-600);
-    --color-accent-foreground: var(--color-white);
+    /* Burnt autumn palette mapped onto Flux's zinc scale */
+    --color-zinc-50: #fdf8f3;
+    --color-zinc-100: #f5ebe0;
+    --color-zinc-200: #e8d5c0;
+    --color-zinc-300: #d4b896;
+    --color-zinc-400: #b8956a;
+    --color-zinc-500: #9c7a52;
+    --color-zinc-600: #7d5f3e;
+    --color-zinc-700: #5e4630;
+    --color-zinc-800: #3d2e20;
+    --color-zinc-900: #271d14;
+    --color-zinc-950: #16100b;
+
+    /* Accent: burnt orange */
+    --color-accent: #c2410c;
+    --color-accent-content: #9a3412;
+    --color-accent-foreground: #fff7ed;
+
+    /* Typography */
+    --font-heading: 'Fredoka', ui-rounded, sans-serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+
+    /* Custom autumn colors for direct use */
+    --color-rust: #c2410c;
+    --color-rust-dark: #9a3412;
+    --color-amber-warm: #d97706;
+    --color-cream: #fdf8f3;
+    --color-sand: #f5ebe0;
+    --color-bark: #5e4630;
+    --color-bark-light: #7d5f3e;
 }
 
 @layer theme {
     .dark {
-        --color-accent: var(--color-orange-400);
-        --color-accent-content: var(--color-orange-400);
-        --color-accent-foreground: var(--color-orange-950);
+        --color-accent: #f97316;
+        --color-accent-content: #fb923c;
+        --color-accent-foreground: #431407;
     }
 }
 
-@layer base {
+/* ─── Base ─── */
 
+@layer base {
     *,
     ::after,
     ::before,
     ::backdrop,
     ::file-selector-button {
-        border-color: var(--color-gray-200, currentColor);
+        border-color: var(--color-zinc-200, currentColor);
+    }
+
+    html {
+        font-family: var(--font-body);
+    }
+
+    h1, h2, h3, h4, h5, h6,
+    [data-flux-heading] {
+        font-family: var(--font-heading);
     }
 }
 
+/* ─── Flux component overrides ─── */
+
+/* Form fields */
 [data-flux-field]:not(ui-radio, ui-checkbox) {
     @apply grid gap-2;
 }
 
 [data-flux-label] {
     @apply !mb-0 !leading-tight;
+    font-family: var(--font-heading);
+    font-weight: 500;
+}
+
+/* Inputs: rounder, warmer */
+input[data-flux-control],
+textarea[data-flux-control],
+select[data-flux-control] {
+    @apply rounded-xl border-zinc-200 bg-white shadow-sm;
 }
 
 input:focus[data-flux-control],
 textarea:focus[data-flux-control],
 select:focus[data-flux-control] {
-    @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
+    @apply outline-hidden ring-2 ring-amber-400/50 ring-offset-2 ring-offset-white border-amber-300;
 }
 
-/* \[:where(&)\]:size-4 {
-    @apply size-4;
-} */
+/* Buttons: pill-shaped */
+button[data-flux-button],
+a[data-flux-button] {
+    @apply rounded-full font-semibold;
+    font-family: var(--font-heading);
+}
+
+/* Primary buttons: burnt orange */
+button[data-flux-button][data-variant="primary"],
+a[data-flux-button][data-variant="primary"] {
+    @apply bg-rust text-white shadow-md shadow-rust/25;
+    transition: all 0.2s ease;
+}
+
+button[data-flux-button][data-variant="primary"]:hover,
+a[data-flux-button][data-variant="primary"]:hover {
+    @apply bg-rust-dark shadow-lg shadow-rust/30;
+    transform: translateY(-1px);
+}
+
+button[data-flux-button][data-variant="primary"]:active,
+a[data-flux-button][data-variant="primary"]:active {
+    transform: translateY(0);
+}
+
+/* ─── Sentence builder ─── */
+
+.sentence-builder {
+    font-family: var(--font-heading);
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: var(--color-bark);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.4rem;
+}
+
+.sentence-input {
+    font-family: var(--font-heading);
+    font-size: inherit;
+    font-weight: inherit;
+    color: var(--color-rust);
+    background: none;
+    border: none;
+    border-bottom: 2px dashed var(--color-zinc-300);
+    outline: none;
+    padding: 0 0.1rem;
+    min-width: 2ch;
+    text-align: center;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.sentence-input:focus {
+    border-bottom-style: solid;
+    border-bottom-color: var(--color-rust);
+    background-color: rgba(194, 65, 12, 0.05);
+    border-radius: 4px 4px 0 0;
+}
+
+.sentence-input::placeholder {
+    color: var(--color-zinc-300);
+    font-weight: 400;
+}
+
+/* Hide number input spinners */
+.sentence-input[type="number"]::-webkit-inner-spin-button,
+.sentence-input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.sentence-input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+/* ─── Utility classes ─── */
+
+.paceday-card {
+    @apply rounded-3xl bg-white p-6 shadow-lg shadow-zinc-900/[0.04];
+}
+
+.paceday-gradient {
+    background: linear-gradient(to bottom, var(--color-cream) 0%, var(--color-sand) 100%);
+}

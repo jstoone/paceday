@@ -36,65 +36,79 @@ new #[Title('Ask a question')] class extends Component {
 }; ?>
 
 <section>
-    <x-layouts::app>
-        <div class="mx-auto max-w-2xl px-4 py-12">
-            <form wire:submit="ask" class="space-y-10">
-                <div class="space-y-2">
-                    <flux:heading size="xl">Ask a question</flux:heading>
-                    <flux:text>Track how long something lasts by completing the sentence below.</flux:text>
-                </div>
+        <form wire:submit="ask" class="space-y-8">
+            <div>
+                <h1 class="text-2xl font-bold text-bark">Ask a question</h1>
+                <p class="mt-1 text-sm text-bark-light">Complete the sentence to start tracking.</p>
+            </div>
 
-                <div class="rounded-xl border border-zinc-200 bg-zinc-50 p-6 dark:border-zinc-700 dark:bg-zinc-900">
-                    <p class="flex flex-wrap items-baseline gap-x-2 gap-y-3 text-2xl font-medium tracking-tight text-zinc-900 dark:text-white">
-                        <span>How long does</span>
-                        <flux:input
-                            wire:model="amount"
-                            type="number"
-                            min="1"
-                            class="!w-20 text-center text-2xl"
-                            placeholder="40"
-                            required
-                        />
-                        <flux:input
-                            wire:model="unit"
-                            type="text"
-                            class="!w-36 text-center text-2xl"
-                            placeholder="capsules"
-                            required
-                        />
-                        <span>of</span>
-                        <flux:input
-                            wire:model="thing"
-                            type="text"
-                            class="!w-40 text-center text-2xl"
-                            placeholder="coffee"
-                            required
-                        />
-                        <span>last?</span>
-                    </p>
-                </div>
+            {{-- Sentence builder — inputs styled inline as part of the sentence --}}
+            <div class="paceday-card"
+                 x-data="{
+                     resize(el) {
+                         if (el.type === 'number') {
+                             const len = Math.max(String(el.value).length, el.placeholder.length, 1);
+                             el.style.width = (len + 1.5) + 'ch';
+                         } else {
+                             const len = Math.max(el.value.length, el.placeholder.length, 2);
+                             el.style.width = (len + 1) + 'ch';
+                         }
+                     }
+                 }"
+            >
+                <p class="sentence-builder leading-relaxed">
+                    <span>How long does</span>
+                    <input
+                        wire:model="amount"
+                        type="number"
+                        min="1"
+                        placeholder="40"
+                        required
+                        class="sentence-input"
+                        x-init="resize($el)"
+                        @input="resize($el)"
+                    />
+                    <input
+                        wire:model="unit"
+                        type="text"
+                        placeholder="capsules"
+                        required
+                        class="sentence-input"
+                        x-init="resize($el)"
+                        @input="resize($el)"
+                    />
+                    <span>of</span>
+                    <input
+                        wire:model="thing"
+                        type="text"
+                        placeholder="coffee"
+                        required
+                        class="sentence-input"
+                        x-init="resize($el)"
+                        @input="resize($el)"
+                    />
+                    <span>last?</span>
+                </p>
+            </div>
 
-                <div class="space-y-4">
-                    <flux:field>
-                        <flux:label>My guess</flux:label>
-                        <flux:input wire:model="guess" type="text" placeholder="e.g. 3 weeks" />
-                        <flux:description>Optional — predict how long this will take.</flux:description>
-                        <flux:error name="guess" />
-                    </flux:field>
+            {{-- Optional fields --}}
+            <div class="paceday-card space-y-4">
+                <flux:field>
+                    <flux:label>My guess</flux:label>
+                    <flux:input wire:model="guess" type="text" placeholder="e.g. 3 weeks" />
+                    <flux:description>Optional — predict how long this will take.</flux:description>
+                    <flux:error name="guess" />
+                </flux:field>
 
-                    <flux:field>
-                        <flux:label>Note</flux:label>
-                        <flux:textarea wire:model="note" placeholder="Any initial observations..." rows="2" />
-                        <flux:error name="note" />
-                    </flux:field>
-                </div>
+                <flux:field>
+                    <flux:label>Note</flux:label>
+                    <flux:textarea wire:model="note" placeholder="Any initial observations..." rows="2" />
+                    <flux:error name="note" />
+                </flux:field>
+            </div>
 
-                <div class="flex items-center gap-4">
-                    <flux:button variant="primary" type="submit" class="w-full sm:w-auto">
-                        Start tracking
-                    </flux:button>
-                </div>
-            </form>
-        </div>
-    </x-layouts::app>
+            <flux:button variant="primary" type="submit" class="w-full py-3 text-base">
+                Start tracking
+            </flux:button>
+        </form>
 </section>
