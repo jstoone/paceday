@@ -5,14 +5,14 @@
       "Bash(composer require:*)",
       "Bash(/tmp/file_summary.txt:*)",
       "Read(//tmp/**)",
-      "Bash(vendor/bin/pint --dirty --format agent 2>&1)",
+      "Bash(vendor/bin/*)",
       "Bash(php artisan:*)",
-      "Bash(find /Users/jstoone/Sites/paceday -type f \\\\\\(-name *.php -o -name *.md \\\\\\) -path */docs/*)"
+      "Bash(find *)",
+      "Bash(gh issue:*)"
     ]
   },
   "enabledMcpjsonServers": [
     "laravel-boost",
     "herd"
-  ],
-  "defaultMode": "bypassPermissions"
+  ]
 }
