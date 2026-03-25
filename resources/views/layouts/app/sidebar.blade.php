@@ -16,6 +16,12 @@
                         {{ __('Dashboard') }}
                     </flux:sidebar.item>
                 </flux:sidebar.group>
+
+                <flux:sidebar.group :heading="__('Questions')" class="grid">
+                    <flux:sidebar.item icon="plus-circle" :href="route('questions.create')" :current="request()->routeIs('questions.create')" wire:navigate>
+                        {{ __('Ask a question') }}
+                    </flux:sidebar.item>
+                </flux:sidebar.group>
             </flux:sidebar.nav>
 
             <flux:spacer />
