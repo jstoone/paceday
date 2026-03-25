@@ -272,6 +272,238 @@ it('does not show timeline section when no ended rounds exist', function () {
         ->assertDontSee('Previous rounds');
 });
 
+it('shows add a guess link when no guess exists', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('Add a guess');
+});
+
+it('shows current guess with edit link on question page', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->set('guess', '3 weeks')
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('Guess:')
+        ->assertSee('3 weeks')
+        ->assertSee('edit');
+});
+
+it('can update the guess from the question page', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->set('guess', '3 weeks')
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->set('guess', '2 weeks')
+        ->call('updateGuess')
+        ->assertHasNoErrors();
+
+    $question->refresh();
+
+    expect($question->guess)->toBe('2 weeks');
+});
+
+it('creates a timeline entry when guess is updated from question page', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->set('guess', '3 weeks')
+        ->call('updateGuess');
+
+    $guessEntry = TimelineEntry::where('question_id', $question->id)
+        ->where('type', 'guess_updated')
+        ->first();
+
+    expect($guessEntry)->not->toBeNull()
+        ->and($guessEntry->body)->toBe('3 weeks');
+});
+
+it('shows guess vs actual duration on round summaries', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->set('guess', '3 weeks')
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    // End the round
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    // Set known dates for a clean 9-day round
+    $round = Round::where('question_id', $question->id)->first();
+    $round->update([
+        'occurred_at' => '2026-03-01 12:00:00',
+        'ended_at' => '2026-03-10 12:00:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('Guessed 3 weeks')
+        ->assertSee('ran out 12 days early');
+});
+
+it('shows spot on when guess matches actual duration', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->set('guess', '3 weeks')
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    // 21 days = 3 weeks exactly
+    $round = Round::where('question_id', $question->id)->first();
+    $round->update([
+        'occurred_at' => '2026-03-01 12:00:00',
+        'ended_at' => '2026-03-22 12:00:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('spot on!');
+});
+
+it('shows guess changes on the timeline', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->set('guess', '3 weeks')
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    // End the round to have timeline section
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('Guess updated to')
+        ->assertSee('3 weeks');
+});
+
+it('completes rounds fine without a guess', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    // Set known dates
+    $round = Round::where('question_id', $question->id)->first();
+    $round->update([
+        'occurred_at' => '2026-03-01 12:00:00',
+        'ended_at' => '2026-03-10 12:00:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('9 days')
+        ->assertDontSee('Guessed');
+});
+
+it('does not save empty guess', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->set('guess', '')
+        ->call('updateGuess')
+        ->assertHasNoErrors();
+
+    $question->refresh();
+
+    expect($question->guess)->toBeNull();
+
+    expect(TimelineEntry::where('question_id', $question->id)
+        ->where('type', 'guess_updated')
+        ->exists())->toBeFalse();
+});
+
 it('redirects to start-round when no active round and record is called', function () {
     $user = User::factory()->create();
 

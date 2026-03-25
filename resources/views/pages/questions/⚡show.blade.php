@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Tracking\Actions\EndRound;
+use App\Domain\Tracking\Actions\UpdateGuess;
 use App\Models\Question;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -15,10 +16,13 @@ new #[Title('Question')] class extends Component {
 
     public ?string $occurred_at = null;
 
+    public ?string $guess = null;
+
     public function mount(string $questionId): void
     {
         $this->question = Question::with('activeRound')->findOrFail($questionId);
         $this->occurred_at = now()->format('Y-m-d');
+        $this->guess = $this->question->guess;
     }
 
     /** @return array<int, array{round: \App\Models\Round, notes: Collection}> */
@@ -30,25 +34,41 @@ new #[Title('Question')] class extends Component {
             ->latest('occurred_at')
             ->get();
 
-        if ($rounds->isEmpty()) {
-            return [];
-        }
-
         $notes = $this->question->timelineEntries()
             ->where('type', 'note')
             ->get();
 
-        return $rounds->map(function ($round) use ($notes) {
+        $guessEntries = $this->question->timelineEntries()
+            ->where('type', 'guess_updated')
+            ->latest('occurred_at')
+            ->get();
+
+        $roundItems = $rounds->map(function ($round) use ($notes) {
             $roundNotes = $notes->filter(
                 fn ($note) => $note->occurred_at->equalTo($round->occurred_at)
                     || ($round->ended_at && $note->occurred_at->equalTo($round->ended_at))
             );
 
             return [
+                'type' => 'round',
                 'round' => $round,
                 'notes' => $roundNotes,
+                'sort_date' => $round->ended_at ?? $round->occurred_at,
             ];
-        })->all();
+        });
+
+        $guessItems = $guessEntries->map(fn ($entry) => [
+            'type' => 'guess_updated',
+            'entry' => $entry,
+            'sort_date' => $entry->occurred_at,
+        ]);
+
+        $merged = $roundItems->concat($guessItems)
+            ->sortByDesc('sort_date')
+            ->values()
+            ->all();
+
+        return $merged;
     }
 
     public function record(): void
@@ -79,12 +99,58 @@ new #[Title('Question')] class extends Component {
         unset($this->timeline);
     }
 
+    public function updateGuess(): void
+    {
+        $this->validate([
+            'guess' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if ($this->guess === null || $this->guess === '') {
+            return;
+        }
+
+        app(UpdateGuess::class)->execute(
+            question_id: $this->question->id,
+            guess: $this->guess,
+        );
+
+        $this->question->refresh();
+        unset($this->timeline);
+    }
+
     public function startNewRound(): void
     {
         $this->redirect(
             route('questions.start-round', $this->question->id),
             navigate: true,
         );
+    }
+
+    public static function parseDurationToDays(?string $duration): ?int
+    {
+        if ($duration === null || $duration === '') {
+            return null;
+        }
+
+        $duration = strtolower(trim($duration));
+
+        if (preg_match('/^(\d+)\s*(day|days|d)$/', $duration, $matches)) {
+            return (int) $matches[1];
+        }
+
+        if (preg_match('/^(\d+)\s*(week|weeks|wk|wks|w)$/', $duration, $matches)) {
+            return (int) $matches[1] * 7;
+        }
+
+        if (preg_match('/^(\d+)\s*(month|months|mo|mos)$/', $duration, $matches)) {
+            return (int) $matches[1] * 30;
+        }
+
+        if (preg_match('/^(\d+)\s*(year|years|yr|yrs|y)$/', $duration, $matches)) {
+            return (int) $matches[1] * 365;
+        }
+
+        return null;
     }
 }; ?>
 
@@ -102,11 +168,57 @@ new #[Title('Question')] class extends Component {
                 <p class="mt-1 text-sm text-bark-light">
                     {{ $question->amount }} {{ $question->unit }} of {{ $question->thing }}
                 </p>
-                @if ($question->guess)
-                    <p class="mt-1 text-sm text-bark-light">
-                        Guess: <span class="font-medium text-bark">{{ $question->guess }}</span>
-                    </p>
-                @endif
+
+                {{-- Editable guess --}}
+                <div class="mt-2" x-data="{ editing: false }">
+                    <div x-show="!editing" class="flex items-center gap-2">
+                        @if ($question->guess)
+                            <p class="text-sm text-bark-light">
+                                Guess: <span class="font-medium text-bark">{{ $question->guess }}</span>
+                            </p>
+                            <button
+                                x-on:click="editing = true"
+                                type="button"
+                                class="text-xs font-medium text-rust transition hover:text-rust-dark"
+                            >
+                                edit
+                            </button>
+                        @else
+                            <button
+                                x-on:click="editing = true"
+                                type="button"
+                                class="text-sm font-medium text-rust transition hover:text-rust-dark"
+                            >
+                                + Add a guess
+                            </button>
+                        @endif
+                    </div>
+
+                    <div x-show="editing" x-cloak class="flex items-center gap-2">
+                        <flux:input
+                            wire:model="guess"
+                            placeholder="e.g. 3 weeks"
+                            size="sm"
+                            class="!w-40"
+                            x-on:keydown.enter="$wire.updateGuess().then(() => editing = false)"
+                        />
+                        <flux:button
+                            wire:click="updateGuess"
+                            variant="primary"
+                            size="sm"
+                            x-on:click="$nextTick(() => editing = false)"
+                        >
+                            Save
+                        </flux:button>
+                        <button
+                            x-on:click="editing = false; $wire.set('guess', '{{ $question->guess }}')"
+                            type="button"
+                            class="text-xs font-medium text-bark-light transition hover:text-bark"
+                        >
+                            cancel
+                        </button>
+                    </div>
+                </div>
             </div>
 
             @if ($question->activeRound)
@@ -175,43 +287,80 @@ new #[Title('Question')] class extends Component {
                 </flux:button>
             @endif
 
-            {{-- Round timeline --}}
+            {{-- Timeline --}}
             @if (count($this->timeline) > 0)
                 <div class="space-y-3">
                     <h2 class="text-lg font-bold text-bark">Previous rounds</h2>
 
                     @foreach ($this->timeline as $entry)
-                        @php
-                            $round = $entry['round'];
-                            $notes = $entry['notes'];
-                            $days = (int) $round->occurred_at->diffInDays($round->ended_at);
-                        @endphp
+                        @if ($entry['type'] === 'round')
+                            @php
+                                $round = $entry['round'];
+                                $notes = $entry['notes'];
+                                $days = (int) $round->occurred_at->diffInDays($round->ended_at);
+                                $guessDays = self::parseDurationToDays($question->guess);
+                            @endphp
 
-                        <div class="paceday-card">
-                            <div class="flex items-start justify-between">
-                                <div>
-                                    <p class="text-sm font-medium text-bark">
-                                        {{ $round->occurred_at->format('M j') }} &mdash; {{ $round->ended_at->format('M j') }}
-                                    </p>
-                                    <p class="mt-0.5 text-sm text-bark-light">
-                                        {{ $days }} {{ Str::plural('day', $days) }}
-                                    </p>
+                            <div class="paceday-card">
+                                <div class="flex items-start justify-between">
+                                    <div>
+                                        <p class="text-sm font-medium text-bark">
+                                            {{ $round->occurred_at->format('M j') }} &mdash; {{ $round->ended_at->format('M j') }}
+                                        </p>
+                                        <p class="mt-0.5 text-sm text-bark-light">
+                                            {{ $days }} {{ Str::plural('day', $days) }}
+                                        </p>
+                                        @if ($question->guess && $guessDays !== null)
+                                            @php
+                                                $diff = $days - $guessDays;
+                                            @endphp
+                                            <p class="mt-1 text-xs text-bark-light">
+                                                Guessed {{ $question->guess }}
+                                                @if ($diff === 0)
+                                                    <span class="font-medium text-green-600">&mdash; spot on!</span>
+                                                @elseif ($diff > 0)
+                                                    <span class="font-medium text-amber-600">&mdash; lasted {{ abs($diff) }} {{ Str::plural('day', abs($diff)) }} longer</span>
+                                                @else
+                                                    <span class="font-medium text-red-600">&mdash; ran out {{ abs($diff) }} {{ Str::plural('day', abs($diff)) }} early</span>
+                                                @endif
+                                            </p>
+                                        @elseif ($question->guess)
+                                            <p class="mt-1 text-xs text-bark-light">
+                                                Guessed {{ $question->guess }}
+                                            </p>
+                                        @endif
+                                    </div>
+
+                                    <div class="ml-4 flex flex-col items-center rounded-2xl bg-sand px-3 py-2">
+                                        <span class="text-xl font-bold text-bark" style="font-family: var(--font-heading)">
+                                            {{ $days }}
+                                        </span>
+                                        <span class="text-[10px] font-medium text-bark-light">{{ Str::plural('day', $days) }}</span>
+                                    </div>
                                 </div>
 
-                                <div class="ml-4 flex flex-col items-center rounded-2xl bg-sand px-3 py-2">
-                                    <span class="text-xl font-bold text-bark" style="font-family: var(--font-heading)">
-                                        {{ $days }}
-                                    </span>
-                                    <span class="text-[10px] font-medium text-bark-light">{{ Str::plural('day', $days) }}</span>
+                                @foreach ($notes as $note)
+                                    <p class="mt-3 border-t border-zinc-100 pt-3 text-sm text-bark-light italic">
+                                        &ldquo;{{ $note->body }}&rdquo;
+                                    </p>
+                                @endforeach
+                            </div>
+                        @elseif ($entry['type'] === 'guess_updated')
+                            @php
+                                $guessEntry = $entry['entry'];
+                            @endphp
+                            <div class="flex items-center gap-3 rounded-2xl px-4 py-3">
+                                <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-50">
+                                    <flux:icon.light-bulb class="size-4 text-amber-600" />
+                                </div>
+                                <div>
+                                    <p class="text-sm text-bark-light">
+                                        Guess updated to <span class="font-medium text-bark">{{ $guessEntry->body }}</span>
+                                    </p>
+                                    <p class="text-xs text-bark-light">{{ $guessEntry->occurred_at->diffForHumans() }}</p>
                                 </div>
                             </div>
-
-                            @foreach ($notes as $note)
-                                <p class="mt-3 border-t border-zinc-100 pt-3 text-sm text-bark-light italic">
-                                    &ldquo;{{ $note->body }}&rdquo;
-                                </p>
-                            @endforeach
-                        </div>
+                        @endif
                     @endforeach
                 </div>
             @endif

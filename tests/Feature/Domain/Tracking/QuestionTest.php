@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Tracking\Actions\AskQuestion;
+use App\Domain\Tracking\Actions\UpdateGuess;
 use App\Domain\Tracking\Events\QuestionAsked;
 use App\Domain\Tracking\States\QuestionState;
 use App\Models\Question;
@@ -140,5 +141,72 @@ describe('AskQuestion action', function () {
         expect(TimelineEntry::where('question_id', $event->question_id)
             ->where('type', 'note')
             ->exists())->toBeFalse();
+    });
+});
+
+describe('UpdateGuess action', function () {
+    it('updates the guess on the question', function () {
+        $user = User::factory()->create();
+        $askEvent = (new AskQuestion)->execute(
+            user_id: $user->id,
+            thing: 'coffee',
+            unit: 'capsules',
+            amount: 40,
+            guess: '3 weeks',
+        );
+
+        (new UpdateGuess)->execute(
+            question_id: $askEvent->question_id,
+            guess: '2 weeks',
+        );
+
+        $question = Question::find($askEvent->question_id);
+        $state = QuestionState::load($askEvent->question_id);
+
+        expect($question->guess)->toBe('2 weeks')
+            ->and($state->guess)->toBe('2 weeks');
+    });
+
+    it('creates a timeline entry for the guess change', function () {
+        $user = User::factory()->create();
+        $askEvent = (new AskQuestion)->execute(
+            user_id: $user->id,
+            thing: 'coffee',
+            unit: 'capsules',
+            amount: 40,
+        );
+
+        (new UpdateGuess)->execute(
+            question_id: $askEvent->question_id,
+            guess: '10 days',
+        );
+
+        $entry = TimelineEntry::where('question_id', $askEvent->question_id)
+            ->where('type', 'guess_updated')
+            ->first();
+
+        expect($entry)->not->toBeNull()
+            ->and($entry->body)->toBe('10 days');
+    });
+
+    it('can set a guess on a question that had no guess', function () {
+        $user = User::factory()->create();
+        $askEvent = (new AskQuestion)->execute(
+            user_id: $user->id,
+            thing: 'toilet paper',
+            unit: 'rolls',
+            amount: 8,
+        );
+
+        expect(Question::find($askEvent->question_id)->guess)->toBeNull();
+
+        (new UpdateGuess)->execute(
+            question_id: $askEvent->question_id,
+            guess: '1 month',
+        );
+
+        $question = Question::find($askEvent->question_id);
+
+        expect($question->guess)->toBe('1 month');
     });
 });
