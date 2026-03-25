@@ -126,6 +126,152 @@ it('supports backdating when ending a round', function () {
     expect($round->ended_at->format('Y-m-d'))->toBe($yesterday);
 });
 
+it('shows timeline of ended rounds after ending a round', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('Previous rounds');
+});
+
+it('shows round duration and dates in timeline', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    // End the round first
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    // Set exact dates on the ended round for a clean 5-day duration
+    $round = Round::where('question_id', $question->id)->first();
+    $round->update([
+        'occurred_at' => '2026-03-10 12:00:00',
+        'ended_at' => '2026-03-15 12:00:00',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSee('Previous rounds')
+        ->assertSee('Mar 10')
+        ->assertSee('Mar 15')
+        ->assertSee('5 days');
+});
+
+it('shows ended rounds newest first', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    // End first round
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    // Start and end second round
+    Livewire::actingAs($user)
+        ->test('pages::questions.start-round', ['questionId' => $question->id])
+        ->call('start');
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->call('record');
+
+    // Set known dates — older round started Mar 1, newer round started Mar 10
+    $rounds = Round::where('question_id', $question->id)
+        ->orderBy('created_at')
+        ->get();
+
+    $rounds[0]->update([
+        'occurred_at' => '2026-03-01 12:00:00',
+        'ended_at' => '2026-03-08 12:00:00',
+    ]);
+    $rounds[1]->update([
+        'occurred_at' => '2026-03-10 12:00:00',
+        'ended_at' => '2026-03-17 12:00:00',
+    ]);
+
+    $content = $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->getContent();
+
+    // Newer round (Mar 10) should appear before older round (Mar 1) in the HTML
+    $newerPos = strpos($content, 'Mar 10');
+    $olderPos = strpos($content, 'Mar 1 '); // trailing space to avoid matching Mar 10
+
+    expect($newerPos)->toBeLessThan($olderPos);
+});
+
+it('shows notes with their associated round in the timeline', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.show', ['questionId' => $question->id])
+        ->set('note', 'This brand was great')
+        ->call('record');
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertSee('This brand was great');
+});
+
+it('does not show timeline section when no ended rounds exist', function () {
+    $user = User::factory()->create();
+
+    Livewire::actingAs($user)
+        ->test('pages::questions.create')
+        ->set('thing', 'coffee')
+        ->set('unit', 'capsules')
+        ->set('amount', 40)
+        ->call('ask');
+
+    $question = Question::where('user_id', $user->id)->first();
+
+    $this->actingAs($user)
+        ->get(route('questions.show', $question->id))
+        ->assertSuccessful()
+        ->assertDontSee('Previous rounds');
+});
+
 it('redirects to start-round when no active round and record is called', function () {
     $user = User::factory()->create();
 

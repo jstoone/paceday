@@ -3,6 +3,8 @@
 use App\Domain\Tracking\Actions\EndRound;
 use App\Models\Question;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -17,6 +19,36 @@ new #[Title('Question')] class extends Component {
     {
         $this->question = Question::with('activeRound')->findOrFail($questionId);
         $this->occurred_at = now()->format('Y-m-d');
+    }
+
+    /** @return array<int, array{round: \App\Models\Round, notes: Collection}> */
+    #[Computed]
+    public function timeline(): array
+    {
+        $rounds = $this->question->rounds()
+            ->where('status', 'ended')
+            ->latest('occurred_at')
+            ->get();
+
+        if ($rounds->isEmpty()) {
+            return [];
+        }
+
+        $notes = $this->question->timelineEntries()
+            ->where('type', 'note')
+            ->get();
+
+        return $rounds->map(function ($round) use ($notes) {
+            $roundNotes = $notes->filter(
+                fn ($note) => $note->occurred_at->equalTo($round->occurred_at)
+                    || ($round->ended_at && $note->occurred_at->equalTo($round->ended_at))
+            );
+
+            return [
+                'round' => $round,
+                'notes' => $roundNotes,
+            ];
+        })->all();
     }
 
     public function record(): void
@@ -44,6 +76,7 @@ new #[Title('Question')] class extends Component {
         $this->question->refresh()->load('activeRound');
         $this->note = null;
         $this->occurred_at = now()->format('Y-m-d');
+        unset($this->timeline);
     }
 
     public function startNewRound(): void
@@ -140,6 +173,47 @@ new #[Title('Question')] class extends Component {
                 <flux:button wire:click="startNewRound" class="w-full py-3 text-base !bg-teal-600 !text-white !shadow-md !shadow-teal-600/25 hover:!bg-teal-700 hover:!shadow-lg hover:!shadow-teal-600/30 hover:!-translate-y-px transition-all">
                     Start a new round
                 </flux:button>
+            @endif
+
+            {{-- Round timeline --}}
+            @if (count($this->timeline) > 0)
+                <div class="space-y-3">
+                    <h2 class="text-lg font-bold text-bark">Previous rounds</h2>
+
+                    @foreach ($this->timeline as $entry)
+                        @php
+                            $round = $entry['round'];
+                            $notes = $entry['notes'];
+                            $days = (int) $round->occurred_at->diffInDays($round->ended_at);
+                        @endphp
+
+                        <div class="paceday-card">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-bark">
+                                        {{ $round->occurred_at->format('M j') }} &mdash; {{ $round->ended_at->format('M j') }}
+                                    </p>
+                                    <p class="mt-0.5 text-sm text-bark-light">
+                                        {{ $days }} {{ Str::plural('day', $days) }}
+                                    </p>
+                                </div>
+
+                                <div class="ml-4 flex flex-col items-center rounded-2xl bg-sand px-3 py-2">
+                                    <span class="text-xl font-bold text-bark" style="font-family: var(--font-heading)">
+                                        {{ $days }}
+                                    </span>
+                                    <span class="text-[10px] font-medium text-bark-light">{{ Str::plural('day', $days) }}</span>
+                                </div>
+                            </div>
+
+                            @foreach ($notes as $note)
+                                <p class="mt-3 border-t border-zinc-100 pt-3 text-sm text-bark-light italic">
+                                    &ldquo;{{ $note->body }}&rdquo;
+                                </p>
+                            @endforeach
+                        </div>
+                    @endforeach
+                </div>
             @endif
         </div>
 </section>
