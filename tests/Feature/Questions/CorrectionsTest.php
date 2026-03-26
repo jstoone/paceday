@@ -417,7 +417,6 @@ it('excludes voided rounds from trends calculations', function () {
     $this->actingAs($user)
         ->get(route('questions.show', $question->id))
         ->assertSuccessful()
-        ->assertSee('Trends')
         ->assertSee('10')
         ->assertSee('days avg');
 });

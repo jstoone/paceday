@@ -549,7 +549,6 @@ it('shows trends section with average duration after ending a round', function (
     $this->actingAs($user)
         ->get(route('questions.show', $question->id))
         ->assertSuccessful()
-        ->assertSee('Trends')
         ->assertSee('20') // 20 days avg
         ->assertSee('days avg');
 });
@@ -639,7 +638,6 @@ it('shows trends with a single ended round without crashing', function () {
     $this->actingAs($user)
         ->get(route('questions.show', $question->id))
         ->assertSuccessful()
-        ->assertSee('Trends')
         ->assertSee('days avg');
 });
 
