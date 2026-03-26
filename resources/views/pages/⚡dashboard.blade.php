@@ -11,6 +11,7 @@ new #[Title('Dashboard')] class extends Component {
         return [
             'questions' => Question::query()
                 ->where('user_id', Auth::id())
+                ->whereNull('retired_at')
                 ->with('activeRound')
                 ->latest()
                 ->get(),

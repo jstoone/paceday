@@ -4,6 +4,7 @@ use App\Domain\Tracking\Actions\AddNote;
 use App\Domain\Tracking\Actions\AdjustRoundEnd;
 use App\Domain\Tracking\Actions\AdjustRoundStart;
 use App\Domain\Tracking\Actions\EndRound;
+use App\Domain\Tracking\Actions\RetireQuestion;
 use App\Domain\Tracking\Actions\UpdateGuess;
 use App\Domain\Tracking\Actions\VoidRound;
 use App\Models\Question;
@@ -85,6 +86,10 @@ new #[Title('Question')] class extends Component {
             ->latest('occurred_at')
             ->get();
 
+        $retiredEntries = $this->question->timelineEntries()
+            ->where('type', 'question_retired')
+            ->get();
+
         $matchedNoteIds = collect();
 
         $roundItems = $rounds->map(function ($round) use ($notes, &$matchedNoteIds) {
@@ -120,8 +125,15 @@ new #[Title('Question')] class extends Component {
             'sort_date' => $entry->occurred_at,
         ]);
 
+        $retiredItems = $retiredEntries->map(fn ($entry) => [
+            'type' => 'question_retired',
+            'entry' => $entry,
+            'sort_date' => $entry->occurred_at,
+        ]);
+
         return $roundItems->concat($standaloneNoteItems)
             ->concat($guessItems)
+            ->concat($retiredItems)
             ->sortByDesc('sort_date')
             ->values()
             ->all();
@@ -234,6 +246,18 @@ new #[Title('Question')] class extends Component {
         );
     }
 
+    public function retire(?string $note = null): void
+    {
+        app(RetireQuestion::class)->execute(
+            question_id: $this->question->id,
+            note: $note ?: null,
+        );
+
+        $this->question->refresh()->load('activeRound');
+        unset($this->timeline);
+        unset($this->trends);
+    }
+
     public static function parseDurationToDays(?string $duration): ?int
     {
         if ($duration === null || $duration === '') {
@@ -272,150 +296,209 @@ new #[Title('Question')] class extends Component {
 
             {{-- Question header --}}
             <div>
-                <h1 class="text-2xl font-bold text-bark">{{ $question->label }}</h1>
+                <div class="flex items-start justify-between">
+                    <h1 class="text-2xl font-bold text-bark">{{ $question->label }}</h1>
+                    @if ($question->retired_at)
+                        <span class="inline-flex items-center rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-bark-light">
+                            Retired
+                        </span>
+                    @endif
+                </div>
                 <p class="mt-1 text-sm text-bark-light">
                     {{ $question->amount }} {{ $question->unit }} of {{ $question->thing }}
                 </p>
 
                 {{-- Editable guess --}}
-                <div class="mt-2" x-data="{ editing: false }">
-                    <div x-show="!editing" class="flex items-center gap-2">
-                        @if ($question->guess)
-                            <p class="text-sm text-bark-light">
-                                Guess: <span class="font-medium text-bark">{{ $question->guess }}</span>
-                            </p>
-                            <button
-                                x-on:click="editing = true"
-                                type="button"
-                                class="text-xs font-medium text-rust transition hover:text-rust-dark"
-                            >
-                                edit
-                            </button>
-                        @else
-                            <button
-                                x-on:click="editing = true"
-                                type="button"
-                                class="text-sm font-medium text-rust transition hover:text-rust-dark"
-                            >
-                                + Add a guess
-                            </button>
-                        @endif
-                    </div>
+                @if ($question->retired_at)
+                    @if ($question->guess)
+                        <p class="mt-2 text-sm text-bark-light">
+                            Guess: <span class="font-medium text-bark">{{ $question->guess }}</span>
+                        </p>
+                    @endif
+                @else
+                    <div class="mt-2" x-data="{ editing: false }">
+                        <div x-show="!editing" class="flex items-center gap-2">
+                            @if ($question->guess)
+                                <p class="text-sm text-bark-light">
+                                    Guess: <span class="font-medium text-bark">{{ $question->guess }}</span>
+                                </p>
+                                <button
+                                    x-on:click="editing = true"
+                                    type="button"
+                                    class="text-xs font-medium text-rust transition hover:text-rust-dark"
+                                >
+                                    edit
+                                </button>
+                            @else
+                                <button
+                                    x-on:click="editing = true"
+                                    type="button"
+                                    class="text-sm font-medium text-rust transition hover:text-rust-dark"
+                                >
+                                    + Add a guess
+                                </button>
+                            @endif
+                        </div>
 
-                    <div x-show="editing" x-cloak class="flex items-center gap-2">
-                        <flux:input
-                            wire:model="guess"
-                            placeholder="e.g. 3 weeks"
-                            size="sm"
-                            class="!w-40"
-                            x-on:keydown.enter="$wire.updateGuess().then(() => editing = false)"
-                        />
-                        <flux:button
-                            wire:click="updateGuess"
-                            variant="primary"
-                            size="sm"
-                            x-on:click="$nextTick(() => editing = false)"
-                        >
-                            Save
-                        </flux:button>
-                        <button
-                            x-on:click="editing = false; $wire.set('guess', '{{ $question->guess }}')"
-                            type="button"
-                            class="text-xs font-medium text-bark-light transition hover:text-bark"
-                        >
-                            cancel
-                        </button>
+                        <div x-show="editing" x-cloak class="flex items-center gap-2">
+                            <flux:input
+                                wire:model="guess"
+                                placeholder="e.g. 3 weeks"
+                                size="sm"
+                                class="!w-40"
+                                x-on:keydown.enter="$wire.updateGuess().then(() => editing = false)"
+                            />
+                            <flux:button
+                                wire:click="updateGuess"
+                                variant="primary"
+                                size="sm"
+                                x-on:click="$nextTick(() => editing = false)"
+                            >
+                                Save
+                            </flux:button>
+                            <button
+                                x-on:click="editing = false; $wire.set('guess', '{{ $question->guess }}')"
+                                type="button"
+                                class="text-xs font-medium text-bark-light transition hover:text-bark"
+                            >
+                                cancel
+                            </button>
+                        </div>
                     </div>
-                </div>
+                @endif
             </div>
 
-            @if ($question->activeRound)
-                {{-- Active round card --}}
-                <div class="paceday-card">
-                    <div class="flex items-start justify-between">
-                        <div class="space-y-2">
-                            <span class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                                <span class="size-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                                Round in progress
-                            </span>
-                            <p class="text-sm text-bark-light">
-                                Started {{ $question->activeRound->occurred_at->diffForHumans() }}
-                                &middot;
-                                Day {{ (int) $question->activeRound->occurred_at->diffInDays(now()) + 1 }}
-                            </p>
-                        </div>
+            @unless ($question->retired_at)
+                @if ($question->activeRound)
+                    {{-- Active round card --}}
+                    <div class="paceday-card">
+                        <div class="flex items-start justify-between">
+                            <div class="space-y-2">
+                                <span class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                                    <span class="size-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                                    Round in progress
+                                </span>
+                                <p class="text-sm text-bark-light">
+                                    Started {{ $question->activeRound->occurred_at->diffForHumans() }}
+                                    &middot;
+                                    Day {{ (int) $question->activeRound->occurred_at->diffInDays(now()) + 1 }}
+                                </p>
+                            </div>
 
-                        {{-- Day counter --}}
-                        <div class="ml-4 flex flex-col items-center rounded-2xl bg-sand px-4 py-3">
-                            <span class="text-3xl font-bold text-rust" style="font-family: var(--font-heading)">
-                                {{ (int) $question->activeRound->occurred_at->diffInDays(now()) + 1 }}
-                            </span>
-                            <span class="text-xs font-medium text-bark-light">days</span>
+                            {{-- Day counter --}}
+                            <div class="ml-4 flex flex-col items-center rounded-2xl bg-sand px-4 py-3">
+                                <span class="text-3xl font-bold text-rust" style="font-family: var(--font-heading)">
+                                    {{ (int) $question->activeRound->occurred_at->diffInDays(now()) + 1 }}
+                                </span>
+                                <span class="text-xs font-medium text-bark-light">days</span>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                {{-- Recording form --}}
-                <div class="paceday-card space-y-4" x-data="{ showDetails: false }">
-                    {{-- Date display / picker toggle --}}
-                    <div class="flex items-center justify-between">
-                        <span class="text-sm font-medium text-bark-light">Ended on</span>
-                        <flux:date-picker wire:model="occurred_at" max="today">
-                            <x-slot name="trigger">
-                                <flux:date-picker.button class="!rounded-full !bg-sand !text-bark !shadow-none !border-0 hover:!bg-zinc-200 !px-3 !py-1 !text-sm !font-medium" />
-                            </x-slot>
-                        </flux:date-picker>
+                    {{-- Recording form --}}
+                    <div class="paceday-card space-y-4" x-data="{ showDetails: false }">
+                        {{-- Date display / picker toggle --}}
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-bark-light">Ended on</span>
+                            <flux:date-picker wire:model="occurred_at" max="today">
+                                <x-slot name="trigger">
+                                    <flux:date-picker.button class="!rounded-full !bg-sand !text-bark !shadow-none !border-0 hover:!bg-zinc-200 !px-3 !py-1 !text-sm !font-medium" />
+                                </x-slot>
+                            </flux:date-picker>
+                        </div>
+
+                        {{-- Optional note --}}
+                        <button
+                            x-show="!showDetails"
+                            x-on:click="showDetails = true"
+                            type="button"
+                            class="text-sm font-medium text-bark-light transition hover:text-bark"
+                        >
+                            + Add a note
+                        </button>
+
+                        <div x-show="showDetails" x-cloak>
+                            <flux:textarea wire:model="note" placeholder="Any notes about this round..." rows="2" />
+                        </div>
+
+                        <flux:button wire:click="record" variant="primary" class="w-full py-3 text-base">
+                            Done — ran out!
+                        </flux:button>
                     </div>
 
-                    {{-- Optional note --}}
+                    {{-- Void active round --}}
+                    <div x-data="{ confirming: false, note: '' }">
+                        <button
+                            x-show="!confirming"
+                            x-on:click="confirming = true"
+                            type="button"
+                            class="text-sm font-medium text-bark-light transition hover:text-red-600"
+                        >
+                            Void this round
+                        </button>
+
+                        <div x-show="confirming" x-cloak class="paceday-card space-y-3">
+                            <p class="text-sm font-medium text-bark">Void this round?</p>
+                            <p class="text-xs text-bark-light">The round will be marked as invalid and excluded from trends.</p>
+                            <textarea
+                                x-model="note"
+                                placeholder="Reason for voiding (optional)..."
+                                rows="2"
+                                class="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-bark shadow-sm focus:border-amber-300 focus:ring-amber-300"
+                            ></textarea>
+                            <div class="flex items-center gap-2">
+                                <flux:button
+                                    x-on:click="$wire.voidRound('{{ $question->active_round_id }}', note); confirming = false; note = ''"
+                                    variant="danger"
+                                    size="sm"
+                                >
+                                    Void round
+                                </flux:button>
+                                <button
+                                    x-on:click="confirming = false; note = ''"
+                                    type="button"
+                                    class="text-xs font-medium text-bark-light transition hover:text-bark"
+                                >
+                                    cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                @else
+                    <div class="paceday-card py-8 text-center">
+                        <p class="text-bark-light">No active round</p>
+                    </div>
+
+                    <flux:button wire:click="startNewRound" class="w-full py-3 text-base !bg-teal-600 !text-white !shadow-md !shadow-teal-600/25 hover:!bg-teal-700 hover:!shadow-lg hover:!shadow-teal-600/30 hover:!-translate-y-px transition-all">
+                        Start a new round
+                    </flux:button>
+                @endif
+
+                {{-- Add a note --}}
+                <div class="paceday-card space-y-3" x-data="{ open: false }">
                     <button
-                        x-show="!showDetails"
-                        x-on:click="showDetails = true"
+                        x-show="!open"
+                        x-on:click="open = true"
                         type="button"
                         class="text-sm font-medium text-bark-light transition hover:text-bark"
                     >
                         + Add a note
                     </button>
 
-                    <div x-show="showDetails" x-cloak>
-                        <flux:textarea wire:model="note" placeholder="Any notes about this round..." rows="2" />
-                    </div>
-
-                    <flux:button wire:click="record" variant="primary" class="w-full py-3 text-base">
-                        Done — ran out!
-                    </flux:button>
-                </div>
-
-                {{-- Void active round --}}
-                <div x-data="{ confirming: false, note: '' }">
-                    <button
-                        x-show="!confirming"
-                        x-on:click="confirming = true"
-                        type="button"
-                        class="text-sm font-medium text-bark-light transition hover:text-red-600"
-                    >
-                        Void this round
-                    </button>
-
-                    <div x-show="confirming" x-cloak class="paceday-card space-y-3">
-                        <p class="text-sm font-medium text-bark">Void this round?</p>
-                        <p class="text-xs text-bark-light">The round will be marked as invalid and excluded from trends.</p>
-                        <textarea
-                            x-model="note"
-                            placeholder="Reason for voiding (optional)..."
-                            rows="2"
-                            class="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-bark shadow-sm focus:border-amber-300 focus:ring-amber-300"
-                        ></textarea>
+                    <div x-show="open" x-cloak class="space-y-3">
+                        <flux:textarea wire:model="annotation" placeholder="Add a note to this question..." rows="2" />
+                        @error('annotation') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
                         <div class="flex items-center gap-2">
                             <flux:button
-                                x-on:click="$wire.voidRound('{{ $question->active_round_id }}', note); confirming = false; note = ''"
-                                variant="danger"
+                                wire:click="addNote"
+                                variant="primary"
                                 size="sm"
+                                x-on:click="if ($wire.annotation) $nextTick(() => open = false)"
                             >
-                                Void round
+                                Save note
                             </flux:button>
                             <button
-                                x-on:click="confirming = false; note = ''"
+                                x-on:click="open = false; $wire.set('annotation', null)"
                                 type="button"
                                 class="text-xs font-medium text-bark-light transition hover:text-bark"
                             >
@@ -424,49 +507,51 @@ new #[Title('Question')] class extends Component {
                         </div>
                     </div>
                 </div>
-            @else
-                <div class="paceday-card py-8 text-center">
-                    <p class="text-bark-light">No active round</p>
-                </div>
 
-                <flux:button wire:click="startNewRound" class="w-full py-3 text-base !bg-teal-600 !text-white !shadow-md !shadow-teal-600/25 hover:!bg-teal-700 hover:!shadow-lg hover:!shadow-teal-600/30 hover:!-translate-y-px transition-all">
-                    Start a new round
-                </flux:button>
-            @endif
+                {{-- Retire question --}}
+                <div x-data="{ confirming: false, retireNote: '' }">
+                    <button
+                        x-show="!confirming"
+                        x-on:click="confirming = true"
+                        type="button"
+                        class="text-sm font-medium text-bark-light transition hover:text-red-600"
+                    >
+                        Retire this question
+                    </button>
 
-            {{-- Add a note --}}
-            <div class="paceday-card space-y-3" x-data="{ open: false }">
-                <button
-                    x-show="!open"
-                    x-on:click="open = true"
-                    type="button"
-                    class="text-sm font-medium text-bark-light transition hover:text-bark"
-                >
-                    + Add a note
-                </button>
-
-                <div x-show="open" x-cloak class="space-y-3">
-                    <flux:textarea wire:model="annotation" placeholder="Add a note to this question..." rows="2" />
-                    @error('annotation') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
-                    <div class="flex items-center gap-2">
-                        <flux:button
-                            wire:click="addNote"
-                            variant="primary"
-                            size="sm"
-                            x-on:click="if ($wire.annotation) $nextTick(() => open = false)"
-                        >
-                            Save note
-                        </flux:button>
-                        <button
-                            x-on:click="open = false; $wire.set('annotation', null)"
-                            type="button"
-                            class="text-xs font-medium text-bark-light transition hover:text-bark"
-                        >
-                            cancel
-                        </button>
+                    <div x-show="confirming" x-cloak class="paceday-card space-y-3">
+                        <p class="text-sm font-medium text-bark">Retire this question?</p>
+                        <p class="text-xs text-bark-light">
+                            The question will be hidden from your dashboard. All data is preserved and accessible via direct link.
+                            @if ($question->activeRound)
+                                The active round will be voided.
+                            @endif
+                        </p>
+                        <textarea
+                            x-model="retireNote"
+                            placeholder="Reason for retiring (optional)..."
+                            rows="2"
+                            class="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-bark shadow-sm focus:border-amber-300 focus:ring-amber-300"
+                        ></textarea>
+                        <div class="flex items-center gap-2">
+                            <flux:button
+                                x-on:click="$wire.retire(retireNote); confirming = false; retireNote = ''"
+                                variant="danger"
+                                size="sm"
+                            >
+                                Retire question
+                            </flux:button>
+                            <button
+                                x-on:click="confirming = false; retireNote = ''"
+                                type="button"
+                                class="text-xs font-medium text-bark-light transition hover:text-bark"
+                            >
+                                cancel
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
+            @endunless
 
             {{-- Trends --}}
             @if ($this->trends)
@@ -705,6 +790,19 @@ new #[Title('Question')] class extends Component {
                                         Guess updated to <span class="font-medium text-bark">{{ $guessEntry->body }}</span>
                                     </p>
                                     <p class="text-xs text-bark-light">{{ $guessEntry->occurred_at->diffForHumans() }}</p>
+                                </div>
+                            </div>
+                        @elseif ($entry['type'] === 'question_retired')
+                            @php
+                                $retiredEntry = $entry['entry'];
+                            @endphp
+                            <div class="flex items-center gap-3 rounded-2xl px-4 py-3" wire:key="retired-{{ $retiredEntry->id }}">
+                                <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+                                    <flux:icon.archive-box class="size-4 text-bark-light" />
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-bark-light">Question retired</p>
+                                    <p class="text-xs text-bark-light">{{ $retiredEntry->occurred_at->diffForHumans() }}</p>
                                 </div>
                             </div>
                         @endif

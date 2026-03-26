@@ -14,6 +14,14 @@ class Question extends Model
     /** @use HasFactory<QuestionFactory> */
     use HasFactory, HasUlids;
 
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return [
+            'retired_at' => 'immutable_datetime',
+        ];
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

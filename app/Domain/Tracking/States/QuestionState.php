@@ -2,6 +2,7 @@
 
 namespace App\Domain\Tracking\States;
 
+use Carbon\CarbonImmutable;
 use Thunk\Verbs\State;
 
 class QuestionState extends State
@@ -21,4 +22,6 @@ class QuestionState extends State
     public ?string $guess = null;
 
     public ?string $active_round_id = null;
+
+    public ?CarbonImmutable $retired_at = null;
 }
