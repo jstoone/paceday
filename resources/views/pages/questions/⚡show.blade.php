@@ -3,12 +3,15 @@
 use App\Domain\Tracking\Actions\AddNote;
 use App\Domain\Tracking\Actions\AdjustRoundEnd;
 use App\Domain\Tracking\Actions\AdjustRoundStart;
+use App\Domain\Tracking\Actions\CreateTag;
 use App\Domain\Tracking\Actions\EndRound;
 use App\Domain\Tracking\Actions\RetireQuestion;
+use App\Domain\Tracking\Actions\UnlinkTag;
 use App\Domain\Tracking\Actions\UpdateGuess;
 use App\Domain\Tracking\Actions\VoidRound;
 use App\Models\Question;
 use App\Models\Round;
+use App\Models\Tag;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -256,6 +259,28 @@ new #[Title('Question')] class extends Component {
         $this->question->refresh()->load('activeRound');
         unset($this->timeline);
         unset($this->trends);
+    }
+
+    #[Computed]
+    public function tags(): Collection
+    {
+        return $this->question->tags()->get();
+    }
+
+    public function createTag(): void
+    {
+        app(CreateTag::class)->execute(
+            user_id: auth()->id(),
+            question_id: $this->question->id,
+        );
+
+        unset($this->tags);
+    }
+
+    public function unlinkTag(string $tagId): void
+    {
+        app(UnlinkTag::class)->execute(tag_id: $tagId);
+        unset($this->tags);
     }
 
     public static function parseDurationToDays(?string $duration): ?int
@@ -506,6 +531,58 @@ new #[Title('Question')] class extends Component {
                             </button>
                         </div>
                     </div>
+                </div>
+
+                {{-- Tags --}}
+                <div class="paceday-card space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-bold text-bark">Tags</h3>
+                        <button
+                            wire:click="createTag"
+                            type="button"
+                            class="text-xs font-medium text-rust transition hover:text-rust-dark"
+                        >
+                            + New tag
+                        </button>
+                    </div>
+
+                    @if ($this->tags->isEmpty())
+                        <p class="text-sm text-bark-light">
+                            No tags yet. Create one to record via QR code, NFC, or Shortcuts.
+                        </p>
+                    @else
+                        <div class="space-y-3">
+                            @foreach ($this->tags as $tag)
+                                <div class="rounded-2xl bg-sand p-3" wire:key="tag-{{ $tag->id }}">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-3">
+                                            <span class="font-mono text-lg font-bold tracking-widest text-bark">
+                                                {{ strtoupper($tag->code) }}
+                                            </span>
+                                            <a
+                                                href="{{ route('tags.show', $tag->code) }}"
+                                                class="text-xs text-bark-light transition hover:text-bark"
+                                                target="_blank"
+                                            >
+                                                {{ route('tags.show', $tag->code) }}
+                                            </a>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <button
+                                                wire:click="unlinkTag('{{ $tag->id }}')"
+                                                wire:confirm="Remove this tag? The code will no longer work."
+                                                type="button"
+                                                class="text-xs font-medium text-bark-light transition hover:text-red-600"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
                 </div>
 
                 {{-- Retire question --}}
