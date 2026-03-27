@@ -188,7 +188,7 @@
                     <div x-show="tab === 'how-good'" x-cloak>
                         <div class="rounded-3xl bg-amber-50/60 p-6 shadow-lg shadow-zinc-900/[0.04] ring-1 ring-amber-200/40 space-y-4">
                             <p class="font-heading text-xl font-semibold text-bark">
-                                Hey, real quick &mdash;
+                                Hey you!
                             </p>
                             <p class="text-bark-light leading-relaxed">
                                 In a world full of trackers that want you to optimise everything, I just wanted to pause and ask: are you doing okay?
