@@ -5,10 +5,13 @@ use App\Domain\Tracking\Actions\AdjustRoundEnd;
 use App\Domain\Tracking\Actions\AdjustRoundStart;
 use App\Domain\Tracking\Actions\CreateTag;
 use App\Domain\Tracking\Actions\EndRound;
+use App\Domain\Tracking\Actions\LogUsage;
 use App\Domain\Tracking\Actions\RetireQuestion;
 use App\Domain\Tracking\Actions\UnlinkTag;
 use App\Domain\Tracking\Actions\UpdateGuess;
 use App\Domain\Tracking\Actions\VoidRound;
+use App\Domain\Tracking\Period;
+use App\Domain\Tracking\QuestionType;
 use App\Models\Question;
 use App\Models\Round;
 use App\Models\Tag;
@@ -36,114 +39,106 @@ new #[Title('Question')] class extends Component {
         $this->guess = $this->question->guess;
     }
 
-    /** @return array{round_count: int, average_days: float, consumption_rate: ?float, consumption_unit: string, average_accuracy: ?float}|null */
-    #[Computed]
-    public function trends(): ?array
+    public function isFrequency(): bool
     {
-        $endedRounds = $this->question->rounds()
-            ->where('status', 'ended')
+        return $this->question->question_type === QuestionType::Frequency;
+    }
+
+    #[Computed]
+    public function periodLabel(): string
+    {
+        return $this->question->period?->label() ?? 'this period';
+    }
+
+    #[Computed]
+    public function periodNoun(): string
+    {
+        return $this->question->period?->noun() ?? 'period';
+    }
+
+    /**
+     * Group usage_logged entries into lazy period buckets.
+     *
+     * @return array<int, array{label: string, start: CarbonImmutable, end: CarbonImmutable, count: int, is_current: bool}>
+     */
+    #[Computed]
+    public function lazyRounds(): array
+    {
+        $entries = $this->question->timelineEntries()
+            ->where('type', 'usage_logged')
             ->oldest('occurred_at')
             ->get();
 
-        if ($endedRounds->isEmpty()) {
-            return null;
+        if ($entries->isEmpty()) {
+            return [];
         }
 
-        $guessDays = self::parseDurationToDays($this->question->guess);
+        $period = $this->question->period;
+        $buckets = [];
 
-        $durations = $endedRounds->map(fn ($round) => (int) $round->occurred_at->diffInDays($round->ended_at));
+        foreach ($entries as $entry) {
+            $key = self::periodKey($entry->occurred_at, $period);
 
-        $averageDays = round($durations->avg(), 1);
+            if (! isset($buckets[$key])) {
+                [$start, $end] = self::periodBounds($entry->occurred_at, $period);
+                $buckets[$key] = [
+                    'label' => self::periodFormatLabel($start, $end, $period),
+                    'start' => $start,
+                    'end' => $end,
+                    'count' => 0,
+                    'is_current' => self::periodKey(now()->toImmutable(), $period) === $key,
+                ];
+            }
 
-        $consumptionRate = $this->question->amount > 0 && $averageDays > 0
-            ? round($this->question->amount / $averageDays, 1)
-            : null;
+            $buckets[$key]['count']++;
+        }
 
-        $averageAccuracy = $guessDays !== null
-            ? round($durations->avg() - $guessDays, 1)
-            : null;
+        return array_reverse(array_values($buckets));
+    }
 
-        return [
-            'round_count' => $endedRounds->count(),
-            'average_days' => $averageDays,
-            'consumption_rate' => $consumptionRate,
-            'consumption_unit' => $this->question->unit,
-            'average_accuracy' => $averageAccuracy,
-        ];
+    #[Computed]
+    public function currentPeriodCount(): int
+    {
+        $currentKey = self::periodKey(now()->toImmutable(), $this->question->period);
+
+        foreach ($this->lazyRounds as $round) {
+            if ($round['is_current']) {
+                return $round['count'];
+            }
+        }
+
+        return 0;
+    }
+
+    /** @return array{round_count: int, average_days: float, consumption_rate: ?float, consumption_unit: string, average_accuracy: ?float}|array{period_count: int, average_count: float, guess_value: ?int, average_accuracy: ?float}|null */
+    #[Computed]
+    public function trends(): ?array
+    {
+        if ($this->isFrequency()) {
+            return $this->howManyTrends();
+        }
+
+        return $this->howLongTrends();
     }
 
     #[Computed]
     public function timeline(): array
     {
-        $rounds = $this->question->rounds()
-            ->whereIn('status', ['ended', 'voided'])
-            ->latest('occurred_at')
-            ->get();
+        if ($this->isFrequency()) {
+            return $this->howManyTimeline();
+        }
 
-        $notes = $this->question->timelineEntries()
-            ->where('type', 'note')
-            ->get();
-
-        $guessEntries = $this->question->timelineEntries()
-            ->where('type', 'guess_updated')
-            ->latest('occurred_at')
-            ->get();
-
-        $retiredEntries = $this->question->timelineEntries()
-            ->where('type', 'question_retired')
-            ->get();
-
-        $matchedNoteIds = collect();
-
-        $roundItems = $rounds->map(function ($round) use ($notes, &$matchedNoteIds) {
-            $roundNotes = $notes->filter(
-                fn ($note) => $note->occurred_at->equalTo($round->occurred_at)
-                    || ($round->ended_at && $note->occurred_at->equalTo($round->ended_at))
-                    || ($round->voided_at && $note->occurred_at->equalTo($round->voided_at))
-            );
-
-            $matchedNoteIds = $matchedNoteIds->merge($roundNotes->pluck('id'));
-
-            $sortDate = $round->voided_at ?? $round->ended_at ?? $round->occurred_at;
-
-            return [
-                'type' => 'round',
-                'round' => $round,
-                'notes' => $roundNotes,
-                'sort_date' => $sortDate,
-            ];
-        });
-
-        $standaloneNotes = $notes->reject(fn ($note) => $matchedNoteIds->contains($note->id));
-
-        $standaloneNoteItems = $standaloneNotes->map(fn ($note) => [
-            'type' => 'note',
-            'entry' => $note,
-            'sort_date' => $note->occurred_at,
-        ]);
-
-        $guessItems = $guessEntries->map(fn ($entry) => [
-            'type' => 'guess_updated',
-            'entry' => $entry,
-            'sort_date' => $entry->occurred_at,
-        ]);
-
-        $retiredItems = $retiredEntries->map(fn ($entry) => [
-            'type' => 'question_retired',
-            'entry' => $entry,
-            'sort_date' => $entry->occurred_at,
-        ]);
-
-        return $roundItems->concat($standaloneNoteItems)
-            ->concat($guessItems)
-            ->concat($retiredItems)
-            ->sortByDesc('sort_date')
-            ->values()
-            ->all();
+        return $this->howLongTimeline();
     }
 
     public function record(): void
     {
+        if ($this->isFrequency()) {
+            $this->logUsage();
+
+            return;
+        }
+
         if (! $this->question->activeRound) {
             $this->redirect(
                 route('questions.start-round', $this->question->id),
@@ -169,6 +164,24 @@ new #[Title('Question')] class extends Component {
         $this->occurred_at = now()->format('Y-m-d');
         unset($this->timeline);
         unset($this->trends);
+    }
+
+    public function logUsage(): void
+    {
+        $this->validate([
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        app(LogUsage::class)->execute(
+            question_id: $this->question->id,
+            note: $this->note ?: null,
+        );
+
+        $this->note = null;
+        unset($this->timeline);
+        unset($this->trends);
+        unset($this->lazyRounds);
+        unset($this->currentPeriodCount);
     }
 
     public function updateGuess(): void
@@ -283,6 +296,185 @@ new #[Title('Question')] class extends Component {
         unset($this->tags);
     }
 
+    // --- Private helpers ---
+
+    private function howLongTrends(): ?array
+    {
+        $endedRounds = $this->question->rounds()
+            ->where('status', 'ended')
+            ->oldest('occurred_at')
+            ->get();
+
+        if ($endedRounds->isEmpty()) {
+            return null;
+        }
+
+        $guessDays = self::parseDurationToDays($this->question->guess);
+
+        $durations = $endedRounds->map(fn ($round) => (int) $round->occurred_at->diffInDays($round->ended_at));
+
+        $averageDays = round($durations->avg(), 1);
+
+        $consumptionRate = $this->question->amount > 0 && $averageDays > 0
+            ? round($this->question->amount / $averageDays, 1)
+            : null;
+
+        $averageAccuracy = $guessDays !== null
+            ? round($durations->avg() - $guessDays, 1)
+            : null;
+
+        return [
+            'type' => 'how_long',
+            'round_count' => $endedRounds->count(),
+            'average_days' => $averageDays,
+            'consumption_rate' => $consumptionRate,
+            'consumption_unit' => $this->question->unit,
+            'average_accuracy' => $averageAccuracy,
+        ];
+    }
+
+    private function howManyTrends(): ?array
+    {
+        $completedRounds = collect($this->lazyRounds)->reject(fn ($r) => $r['is_current']);
+
+        if ($completedRounds->isEmpty()) {
+            return null;
+        }
+
+        $averageCount = round($completedRounds->avg('count'), 1);
+        $guessValue = $this->question->guess !== null ? (int) $this->question->guess : null;
+
+        $averageAccuracy = $guessValue !== null
+            ? round($averageCount - $guessValue, 1)
+            : null;
+
+        return [
+            'type' => 'how_many',
+            'period_count' => $completedRounds->count(),
+            'average_count' => $averageCount,
+            'guess_value' => $guessValue,
+            'average_accuracy' => $averageAccuracy,
+        ];
+    }
+
+    private function howLongTimeline(): array
+    {
+        $rounds = $this->question->rounds()
+            ->whereIn('status', ['ended', 'voided'])
+            ->latest('occurred_at')
+            ->get();
+
+        $notes = $this->question->timelineEntries()
+            ->where('type', 'note')
+            ->get();
+
+        $guessEntries = $this->question->timelineEntries()
+            ->where('type', 'guess_updated')
+            ->latest('occurred_at')
+            ->get();
+
+        $retiredEntries = $this->question->timelineEntries()
+            ->where('type', 'question_retired')
+            ->get();
+
+        $matchedNoteIds = collect();
+
+        $roundItems = $rounds->map(function ($round) use ($notes, &$matchedNoteIds) {
+            $roundNotes = $notes->filter(
+                fn ($note) => $note->occurred_at->equalTo($round->occurred_at)
+                    || ($round->ended_at && $note->occurred_at->equalTo($round->ended_at))
+                    || ($round->voided_at && $note->occurred_at->equalTo($round->voided_at))
+            );
+
+            $matchedNoteIds = $matchedNoteIds->merge($roundNotes->pluck('id'));
+
+            $sortDate = $round->voided_at ?? $round->ended_at ?? $round->occurred_at;
+
+            return [
+                'type' => 'round',
+                'round' => $round,
+                'notes' => $roundNotes,
+                'sort_date' => $sortDate,
+            ];
+        });
+
+        $standaloneNotes = $notes->reject(fn ($note) => $matchedNoteIds->contains($note->id));
+
+        $standaloneNoteItems = $standaloneNotes->map(fn ($note) => [
+            'type' => 'note',
+            'entry' => $note,
+            'sort_date' => $note->occurred_at,
+        ]);
+
+        $guessItems = $guessEntries->map(fn ($entry) => [
+            'type' => 'guess_updated',
+            'entry' => $entry,
+            'sort_date' => $entry->occurred_at,
+        ]);
+
+        $retiredItems = $retiredEntries->map(fn ($entry) => [
+            'type' => 'question_retired',
+            'entry' => $entry,
+            'sort_date' => $entry->occurred_at,
+        ]);
+
+        return $roundItems->concat($standaloneNoteItems)
+            ->concat($guessItems)
+            ->concat($retiredItems)
+            ->sortByDesc('sort_date')
+            ->values()
+            ->all();
+    }
+
+    private function howManyTimeline(): array
+    {
+        $notes = $this->question->timelineEntries()
+            ->where('type', 'note')
+            ->get();
+
+        $guessEntries = $this->question->timelineEntries()
+            ->where('type', 'guess_updated')
+            ->latest('occurred_at')
+            ->get();
+
+        $retiredEntries = $this->question->timelineEntries()
+            ->where('type', 'question_retired')
+            ->get();
+
+        $periodItems = collect($this->lazyRounds)
+            ->reject(fn ($r) => $r['is_current'])
+            ->map(fn ($r) => [
+                'type' => 'period',
+                'period' => $r,
+                'sort_date' => $r['end'],
+            ]);
+
+        $noteItems = $notes->map(fn ($note) => [
+            'type' => 'note',
+            'entry' => $note,
+            'sort_date' => $note->occurred_at,
+        ]);
+
+        $guessItems = $guessEntries->map(fn ($entry) => [
+            'type' => 'guess_updated',
+            'entry' => $entry,
+            'sort_date' => $entry->occurred_at,
+        ]);
+
+        $retiredItems = $retiredEntries->map(fn ($entry) => [
+            'type' => 'question_retired',
+            'entry' => $entry,
+            'sort_date' => $entry->occurred_at,
+        ]);
+
+        return $periodItems->concat($noteItems)
+            ->concat($guessItems)
+            ->concat($retiredItems)
+            ->sortByDesc('sort_date')
+            ->values()
+            ->all();
+    }
+
     public static function parseDurationToDays(?string $duration): ?int
     {
         if ($duration === null || $duration === '') {
@@ -308,6 +500,34 @@ new #[Title('Question')] class extends Component {
         }
 
         return null;
+    }
+
+    private static function periodKey(CarbonImmutable $date, Period $period): string
+    {
+        return match ($period) {
+            Period::Daily => $date->format('Y-m-d'),
+            Period::Weekly => $date->startOfWeek()->format('Y-m-d'),
+            Period::Monthly => $date->format('Y-m'),
+        };
+    }
+
+    /** @return array{0: CarbonImmutable, 1: CarbonImmutable} */
+    private static function periodBounds(CarbonImmutable $date, Period $period): array
+    {
+        return match ($period) {
+            Period::Daily => [$date->startOfDay(), $date->endOfDay()],
+            Period::Weekly => [$date->startOfWeek(), $date->endOfWeek()],
+            Period::Monthly => [$date->startOfMonth(), $date->endOfMonth()],
+        };
+    }
+
+    private static function periodFormatLabel(CarbonImmutable $start, CarbonImmutable $end, Period $period): string
+    {
+        return match ($period) {
+            Period::Daily => $start->format('M j'),
+            Period::Weekly => $start->format('M j').' – '.$end->format('M j'),
+            Period::Monthly => $start->format('M Y'),
+        };
     }
 }; ?>
 
@@ -345,7 +565,100 @@ new #[Title('Question')] class extends Component {
 
         {{-- Hero card --}}
         @unless ($question->retired_at)
-            @if ($question->activeRound)
+            @if ($this->isFrequency())
+                {{-- "How many" hero card --}}
+                <div class="paceday-card">
+                    {{-- Period label --}}
+                    <div class="flex items-center justify-between">
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                            <span class="size-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                            {{ ucfirst($this->periodLabel) }}
+                        </span>
+                        <span class="text-xs text-bark-light capitalize">
+                            {{ $question->period?->value }}
+                        </span>
+                    </div>
+
+                    {{-- Hero count --}}
+                    <div class="py-6 text-center">
+                        <span class="text-6xl font-bold text-rust" style="font-family: var(--font-heading)">
+                            {{ $this->currentPeriodCount }}
+                        </span>
+                        <p class="mt-1 text-sm font-medium text-bark-light">
+                            {{ Str::plural('time', $this->currentPeriodCount) }} {{ $this->periodLabel }}
+                        </p>
+                    </div>
+
+                    {{-- Guess chip --}}
+                    <div class="mb-5 text-center" x-data="{ editing: false }">
+                        <div x-show="!editing">
+                            @if ($question->guess)
+                                <button
+                                    x-on:click="editing = true"
+                                    type="button"
+                                    class="inline-flex items-center gap-1.5 rounded-full bg-sand px-3 py-1 text-sm text-bark-light transition hover:bg-zinc-200"
+                                >
+                                    Guess: <span class="font-medium text-bark">{{ $question->guess }}</span> per {{ $this->periodNoun }}
+                                    <flux:icon.pencil class="size-3 text-bark-light" />
+                                </button>
+                            @else
+                                <button
+                                    x-on:click="editing = true"
+                                    type="button"
+                                    class="text-sm font-medium text-rust transition hover:text-rust-dark"
+                                >
+                                    + Add a guess
+                                </button>
+                            @endif
+                        </div>
+
+                        <div x-show="editing" x-cloak class="flex items-center justify-center gap-2">
+                            <flux:input
+                                wire:model="guess"
+                                placeholder="e.g. 12"
+                                size="sm"
+                                class="!w-24"
+                                x-on:keydown.enter="$wire.updateGuess().then(() => editing = false)"
+                            />
+                            <flux:button
+                                wire:click="updateGuess"
+                                variant="primary"
+                                size="sm"
+                                x-on:click="$nextTick(() => editing = false)"
+                            >
+                                Save
+                            </flux:button>
+                            <button
+                                x-on:click="editing = false; $wire.set('guess', '{{ $question->guess }}')"
+                                type="button"
+                                class="text-xs font-medium text-bark-light transition hover:text-bark"
+                            >
+                                cancel
+                            </button>
+                        </div>
+                    </div>
+
+                    {{-- Record usage --}}
+                    <div class="space-y-3 border-t border-zinc-100 pt-4" x-data="{ showNote: false }">
+                        <button
+                            x-show="!showNote"
+                            x-on:click="showNote = true"
+                            type="button"
+                            class="text-sm font-medium text-bark-light transition hover:text-bark"
+                        >
+                            + Add a note
+                        </button>
+
+                        <div x-show="showNote" x-cloak>
+                            <flux:textarea wire:model="note" placeholder="Any notes..." rows="2" />
+                        </div>
+
+                        <flux:button wire:click="record" variant="primary" class="w-full py-3 text-base">
+                            +1 — Used
+                        </flux:button>
+                    </div>
+                </div>
+            @elseif ($question->activeRound)
                 @php $dayCount = (int) $question->activeRound->occurred_at->diffInDays(now()) + 1; @endphp
                 <div class="paceday-card">
                     {{-- Status row --}}
@@ -508,32 +821,59 @@ new #[Title('Question')] class extends Component {
 
                 {{-- Compact trends row --}}
                 @if ($this->trends)
-                    <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-1 text-sm text-bark-light">
-                        <span>
-                            <span class="font-bold text-bark" style="font-family: var(--font-heading)">{{ $this->trends['average_days'] }}</span>
-                            days avg
-                        </span>
-                        @if ($this->trends['consumption_rate'])
+                    @if (($this->trends['type'] ?? '') === 'how_many')
+                        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-1 text-sm text-bark-light">
+                            <span>
+                                <span class="font-bold text-bark" style="font-family: var(--font-heading)">{{ $this->trends['average_count'] }}</span>
+                                avg per {{ $this->periodNoun }}
+                            </span>
                             <span class="text-zinc-300">&middot;</span>
                             <span>
-                                <span class="font-bold text-bark" style="font-family: var(--font-heading)">~{{ $this->trends['consumption_rate'] }}</span>
-                                {{ $this->trends['consumption_unit'] }}/day
+                                <span class="font-bold text-bark" style="font-family: var(--font-heading)">{{ $this->trends['period_count'] }}</span>
+                                {{ Str::plural($this->periodNoun, $this->trends['period_count']) }}
                             </span>
-                        @endif
-                        @if ($this->trends['average_accuracy'] !== null)
-                            @php $acc = $this->trends['average_accuracy']; @endphp
-                            <span class="text-zinc-300">&middot;</span>
+                            @if ($this->trends['average_accuracy'] !== null)
+                                @php $acc = $this->trends['average_accuracy']; @endphp
+                                <span class="text-zinc-300">&middot;</span>
+                                <span>
+                                    @if ($acc == 0)
+                                        <span class="font-medium text-green-600">spot on</span>
+                                    @elseif ($acc > 0)
+                                        <span class="font-medium text-amber-600">{{ abs($acc) }} more than guessed</span>
+                                    @else
+                                        <span class="font-medium text-red-600">{{ abs($acc) }} fewer than guessed</span>
+                                    @endif
+                                </span>
+                            @endif
+                        </div>
+                    @else
+                        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-1 text-sm text-bark-light">
                             <span>
-                                @if ($acc == 0)
-                                    <span class="font-medium text-green-600">spot on</span>
-                                @elseif ($acc > 0)
-                                    <span class="font-medium text-amber-600">{{ abs($acc) }} {{ Str::plural('day', (int) abs($acc)) }} longer</span>
-                                @else
-                                    run out <span class="font-medium text-red-600">{{ abs($acc) }} {{ Str::plural('day', (int) abs($acc)) }} early</span>
-                                @endif
+                                <span class="font-bold text-bark" style="font-family: var(--font-heading)">{{ $this->trends['average_days'] }}</span>
+                                days avg
                             </span>
-                        @endif
-                    </div>
+                            @if ($this->trends['consumption_rate'])
+                                <span class="text-zinc-300">&middot;</span>
+                                <span>
+                                    <span class="font-bold text-bark" style="font-family: var(--font-heading)">~{{ $this->trends['consumption_rate'] }}</span>
+                                    {{ $this->trends['consumption_unit'] }}/day
+                                </span>
+                            @endif
+                            @if ($this->trends['average_accuracy'] !== null)
+                                @php $acc = $this->trends['average_accuracy']; @endphp
+                                <span class="text-zinc-300">&middot;</span>
+                                <span>
+                                    @if ($acc == 0)
+                                        <span class="font-medium text-green-600">spot on</span>
+                                    @elseif ($acc > 0)
+                                        <span class="font-medium text-amber-600">{{ abs($acc) }} {{ Str::plural('day', (int) abs($acc)) }} longer</span>
+                                    @else
+                                        run out <span class="font-medium text-red-600">{{ abs($acc) }} {{ Str::plural('day', (int) abs($acc)) }} early</span>
+                                    @endif
+                                </span>
+                            @endif
+                        </div>
+                    @endif
                 @endif
 
                 @foreach ($this->timeline as $entry)
@@ -686,6 +1026,32 @@ new #[Title('Question')] class extends Component {
                                         </div>
                                     </div>
                                 </div>
+                            @endif
+                        </div>
+                    @elseif ($entry['type'] === 'period')
+                        @php
+                            $period = $entry['period'];
+                            $guessValue = $question->guess !== null ? (int) $question->guess : null;
+                        @endphp
+                        <div class="paceday-card !p-4" wire:key="period-{{ $period['label'] }}">
+                            <div class="flex items-baseline justify-between">
+                                <span class="text-sm font-medium text-bark">{{ $period['label'] }}</span>
+                                <span class="text-sm font-medium text-bark">
+                                    {{ $period['count'] }} {{ Str::plural('time', $period['count']) }}
+                                </span>
+                            </div>
+                            @if ($guessValue !== null)
+                                @php $diff = $period['count'] - $guessValue; @endphp
+                                <p class="mt-0.5 text-xs text-bark-light">
+                                    Guessed {{ $question->guess }}
+                                    @if ($diff === 0)
+                                        <span class="font-medium text-green-600">&mdash; spot on!</span>
+                                    @elseif ($diff > 0)
+                                        <span class="font-medium text-amber-600">&mdash; {{ abs($diff) }} more</span>
+                                    @else
+                                        <span class="font-medium text-red-600">&mdash; {{ abs($diff) }} fewer</span>
+                                    @endif
+                                </p>
                             @endif
                         </div>
                     @elseif ($entry['type'] === 'note')

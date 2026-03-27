@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Tracking\QuestionType;
 use App\Models\Question;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Title;
@@ -25,7 +26,7 @@ new #[Title('Dashboard')] class extends Component {
             <div class="flex items-end justify-between">
                 <div>
                     <h1 class="text-2xl font-bold text-bark">My questions</h1>
-                    <p class="mt-1 text-sm text-bark-light">Track how long things last</p>
+                    <p class="mt-1 text-sm text-bark-light">Track your consumption patterns</p>
                 </div>
                 <a href="{{ route('questions.create') }}" wire:navigate>
                     <flux:button variant="primary" icon="plus" size="sm">
@@ -64,11 +65,27 @@ new #[Title('Dashboard')] class extends Component {
                                         {{ $question->label }}
                                     </h2>
                                     <p class="mt-0.5 text-sm text-bark-light">
-                                        {{ $question->amount }} {{ $question->unit }} of {{ $question->thing }}
+                                        @if ($question->question_type === QuestionType::Frequency)
+                                            {{ ucfirst($question->period?->value ?? 'weekly') }} tracking
+                                        @else
+                                            {{ $question->amount }} {{ $question->unit }} of {{ $question->thing }}
+                                        @endif
                                     </p>
                                 </div>
 
-                                @if ($question->activeRound)
+                                @if ($question->question_type === QuestionType::Frequency)
+                                    <div class="ml-4 flex flex-col items-end">
+                                        <span class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                                            <span class="size-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                                            {{ ucfirst($question->period?->value ?? 'weekly') }}
+                                        </span>
+                                        @if ($question->guess)
+                                            <span class="mt-1 text-xs text-bark-light">
+                                                Guess: {{ $question->guess }}
+                                            </span>
+                                        @endif
+                                    </div>
+                                @elseif ($question->activeRound)
                                     <div class="ml-4 flex flex-col items-end">
                                         <span class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
                                             <span class="size-1.5 rounded-full bg-blue-500 animate-pulse"></span>

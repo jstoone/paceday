@@ -5,7 +5,6 @@ namespace App\Domain\Tracking\Events;
 use App\Domain\Tracking\States\TagState;
 use App\Models\Tag;
 use App\Support\Verbs\StateUlid;
-use Thunk\Verbs\Attributes\Hooks\Once;
 use Thunk\Verbs\Event;
 
 class TagLinked extends Event
@@ -29,7 +28,6 @@ class TagLinked extends Event
         $state->question_id = $this->question_id;
     }
 
-    #[Once]
     public function handle(): void
     {
         Tag::where('id', $this->tag_id)->update([

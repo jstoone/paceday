@@ -9,7 +9,6 @@ use App\Models\Round;
 use App\Models\TimelineEntry;
 use App\Support\Verbs\StateUlid;
 use Carbon\CarbonImmutable;
-use Thunk\Verbs\Attributes\Hooks\Once;
 use Thunk\Verbs\Event;
 
 class RoundVoided extends Event
@@ -45,7 +44,6 @@ class RoundVoided extends Event
         }
     }
 
-    #[Once]
     public function handle(): void
     {
         Round::where('id', $this->round_id)->update([
@@ -56,12 +54,15 @@ class RoundVoided extends Event
         Question::where('active_round_id', $this->round_id)
             ->update(['active_round_id' => null]);
 
-        TimelineEntry::create([
-            'question_id' => $this->question_id,
-            'type' => 'round_voided',
-            'occurred_at' => $this->voided_at,
-            'recorded_at' => $this->voided_at,
-            'metadata' => ['round_id' => $this->round_id],
-        ]);
+        TimelineEntry::updateOrCreate(
+            ['event_id' => $this->id],
+            [
+                'question_id' => $this->question_id,
+                'type' => 'round_voided',
+                'occurred_at' => $this->voided_at,
+                'recorded_at' => $this->voided_at,
+                'metadata' => ['round_id' => $this->round_id],
+            ],
+        );
     }
 }

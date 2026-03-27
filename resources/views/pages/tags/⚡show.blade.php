@@ -1,7 +1,9 @@
 <?php
 
 use App\Domain\Tracking\Actions\EndRound;
+use App\Domain\Tracking\Actions\LogUsage;
 use App\Domain\Tracking\Actions\StartRound;
+use App\Domain\Tracking\QuestionType;
 use App\Domain\Tracking\States\QuestionState;
 use App\Models\Tag;
 use Carbon\CarbonImmutable;
@@ -34,11 +36,15 @@ new #[Title('Record')] #[Layout('layouts.tag')] class extends Component {
         $question = $this->tag->question;
         $questionState = QuestionState::load($question->id);
 
-        if ($questionState->question_type !== 'how_long') {
-            return;
-        }
+        if ($questionState->question_type === QuestionType::Frequency) {
+            app(LogUsage::class)->execute(
+                question_id: $question->id,
+                note: $this->note,
+            );
 
-        if ($questionState->active_round_id !== null) {
+            $this->recorded = true;
+            $this->recordedAction = 'usage_logged';
+        } elseif ($questionState->active_round_id !== null) {
             app(EndRound::class)->execute(
                 round_id: $questionState->active_round_id,
                 occurred_at: CarbonImmutable::now(),
@@ -85,7 +91,13 @@ new #[Title('Record')] #[Layout('layouts.tag')] class extends Component {
                     </div>
                     <div>
                         <h1 class="text-lg font-bold text-bark">
-                            {{ $recordedAction === 'round_started' ? 'Round started!' : 'Recorded!' }}
+                            @if ($recordedAction === 'round_started')
+                                Round started!
+                            @elseif ($recordedAction === 'usage_logged')
+                                Logged!
+                            @else
+                                Recorded!
+                            @endif
                         </h1>
                         <p class="mt-1 text-sm text-bark-light">{{ $tag->question->label }}</p>
                     </div>
@@ -96,8 +108,15 @@ new #[Title('Record')] #[Layout('layouts.tag')] class extends Component {
             <div class="paceday-card space-y-4">
                 <h1 class="text-xl font-bold text-bark">{{ $tag->question->label }}</h1>
 
-                {{-- Round status --}}
-                @if ($tag->question->activeRound)
+                {{-- Status --}}
+                @if ($tag->question->question_type === \App\Domain\Tracking\QuestionType::Frequency)
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                            <span class="size-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                            {{ ucfirst($tag->question->period?->value ?? 'weekly') }}
+                        </span>
+                    </div>
+                @elseif ($tag->question->activeRound)
                     <div class="flex items-center gap-2">
                         <span class="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
                             <span class="size-1.5 rounded-full bg-blue-500 animate-pulse"></span>
@@ -127,7 +146,11 @@ new #[Title('Record')] #[Layout('layouts.tag')] class extends Component {
                     <flux:textarea wire:model="note" placeholder="Any notes..." rows="2" />
                 </div>
 
-                @if ($tag->question->activeRound)
+                @if ($tag->question->question_type === \App\Domain\Tracking\QuestionType::Frequency)
+                    <flux:button wire:click="record" variant="primary" class="w-full py-3 text-base">
+                        +1 — Used
+                    </flux:button>
+                @elseif ($tag->question->activeRound)
                     <flux:button wire:click="record" variant="primary" class="w-full py-3 text-base">
                         Done — ran out!
                     </flux:button>

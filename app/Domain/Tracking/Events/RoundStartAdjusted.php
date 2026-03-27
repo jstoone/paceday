@@ -7,7 +7,6 @@ use App\Models\Round;
 use App\Models\TimelineEntry;
 use App\Support\Verbs\StateUlid;
 use Carbon\CarbonImmutable;
-use Thunk\Verbs\Attributes\Hooks\Once;
 use Thunk\Verbs\Event;
 
 class RoundStartAdjusted extends Event
@@ -27,7 +26,6 @@ class RoundStartAdjusted extends Event
         $round->occurred_at = $this->new_occurred_at;
     }
 
-    #[Once]
     public function handle(): void
     {
         Round::where('id', $this->round_id)->update([

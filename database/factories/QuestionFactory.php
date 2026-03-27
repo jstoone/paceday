@@ -23,7 +23,19 @@ class QuestionFactory extends Factory
             'thing' => $thing,
             'unit' => $unit,
             'amount' => $amount,
-            'question_type' => 'how_long',
+            'question_type' => 'duration',
         ];
+    }
+
+    public function frequency(): static
+    {
+        return $this->state(fn () => [
+            'label' => 'How many times do I '.fake()->randomElement(['exercise', 'meditate', 'cook', 'read']).' per '.fake()->randomElement(['day', 'week', 'month']).'?',
+            'thing' => fake()->randomElement(['exercise', 'meditate', 'cook', 'read']),
+            'unit' => null,
+            'amount' => null,
+            'question_type' => 'frequency',
+            'period' => fake()->randomElement(['daily', 'weekly', 'monthly']),
+        ]);
     }
 }

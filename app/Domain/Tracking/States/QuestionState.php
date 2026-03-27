@@ -2,6 +2,9 @@
 
 namespace App\Domain\Tracking\States;
 
+use App\Domain\Tracking\Data\DurationQuestion;
+use App\Domain\Tracking\Data\FrequencyQuestion;
+use App\Domain\Tracking\QuestionType;
 use Carbon\CarbonImmutable;
 use Thunk\Verbs\State;
 
@@ -11,13 +14,9 @@ class QuestionState extends State
 
     public string $label;
 
-    public string $thing;
+    public QuestionType $question_type = QuestionType::Duration;
 
-    public string $unit;
-
-    public int $amount;
-
-    public string $question_type = 'how_long';
+    public DurationQuestion|FrequencyQuestion|null $question = null;
 
     public ?string $guess = null;
 

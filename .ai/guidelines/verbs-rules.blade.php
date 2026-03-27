@@ -41,26 +41,9 @@ Only two hooks run during replay:
 
 The `authorize()`, `validate()`, `fired()`, and `__construct()` hooks do **not** run during replay. This distinction is critical — anything that should only happen once must be protected.
 
-### Preventing Re-execution on Replay
+### Replay Safety
 
-Use either approach to prevent `handle()` from re-running during replay:
-
-```php
-// Option A: #[Once] attribute
-#[Once]
-public function handle(): void
-{
-    // This only runs on first commit, not on replay
-}
-
-// Option B: Verbs::unlessReplaying() helper
-public function handle(): void
-{
-    Verbs::unlessReplaying(function () {
-        // One-time side effects here
-    });
-}
-```
+Do **not** use `#[Once]` or `Verbs::unlessReplaying()` to skip `handle()` on replay. Instead, make `handle()` idempotent so it produces the correct projection state on every run — first fire or replay. See the **Projections** section for the pattern.
 
 ## States
 
@@ -106,7 +89,22 @@ Setting a state ID property to `null` enables autofill — Verbs will generate a
 
 Eloquent model writes are projections — they happen in the `handle()` method after an event is committed.
 
+`handle()` methods **must be idempotent** so that event replay produces the correct state without errors. Use `updateOrCreate`, `upsert`, or similar idempotent operations — never plain `create`, which will fail on replay with duplicate key violations.
+
 ```php
+// Correct — idempotent, safe to replay
+public function handle(): void
+{
+    Round::updateOrCreate(
+        ['id' => $this->round_id],
+        [
+            'question_id' => $this->question_id,
+            'started_at' => $this->started_at,
+        ],
+    );
+}
+
+// Wrong — will throw on replay
 public function handle(): void
 {
     Round::create([

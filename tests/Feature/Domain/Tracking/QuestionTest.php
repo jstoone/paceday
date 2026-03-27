@@ -2,7 +2,9 @@
 
 use App\Domain\Tracking\Actions\AskQuestion;
 use App\Domain\Tracking\Actions\UpdateGuess;
+use App\Domain\Tracking\Data\DurationQuestion;
 use App\Domain\Tracking\Events\QuestionAsked;
+use App\Domain\Tracking\QuestionType;
 use App\Domain\Tracking\States\QuestionState;
 use App\Models\Question;
 use App\Models\Round;
@@ -16,9 +18,7 @@ it('creates a question state with all fields', function () {
     $event = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
     Verbs::commit();
 
@@ -26,10 +26,10 @@ it('creates a question state with all fields', function () {
 
     expect($state->user_id)->toBe($user->id)
         ->and($state->label)->toBe('How long does 40 capsules of coffee last?')
-        ->and($state->thing)->toBe('coffee')
-        ->and($state->unit)->toBe('capsules')
-        ->and($state->amount)->toBe(40)
-        ->and($state->question_type)->toBe('how_long');
+        ->and($state->question->thing)->toBe('coffee')
+        ->and($state->question->unit)->toBe('capsules')
+        ->and($state->question->amount)->toBe(40)
+        ->and($state->question_type)->toBe(QuestionType::Duration);
 });
 
 it('projects a Question model after commit', function () {
@@ -38,9 +38,7 @@ it('projects a Question model after commit', function () {
     $event = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
     Verbs::commit();
 
@@ -51,7 +49,7 @@ it('projects a Question model after commit', function () {
         ->and($question->thing)->toBe('coffee')
         ->and($question->unit)->toBe('capsules')
         ->and($question->amount)->toBe(40)
-        ->and($question->question_type)->toBe('how_long')
+        ->and($question->question_type)->toBe(QuestionType::Duration)
         ->and($question->user_id)->toBe($user->id);
 });
 
@@ -61,9 +59,7 @@ it('does not create a round on its own', function () {
     verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
     Verbs::commit();
 
@@ -73,13 +69,10 @@ it('does not create a round on its own', function () {
 describe('AskQuestion action', function () {
     it('creates a question and starts a round in one step', function () {
         $user = User::factory()->create();
-        $action = new AskQuestion;
 
-        $event = $action->execute(
+        $event = (new AskQuestion)->execute(
             user_id: $user->id,
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         );
 
         $question = Question::find($event->question_id);
@@ -96,13 +89,10 @@ describe('AskQuestion action', function () {
 
     it('stores guess on question and note as timeline entry', function () {
         $user = User::factory()->create();
-        $action = new AskQuestion;
 
-        $event = $action->execute(
+        $event = (new AskQuestion)->execute(
             user_id: $user->id,
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
             guess: '3 weeks',
             note: 'Starting with Nespresso pods',
         );
@@ -123,13 +113,10 @@ describe('AskQuestion action', function () {
 
     it('works without guess and note', function () {
         $user = User::factory()->create();
-        $action = new AskQuestion;
 
-        $event = $action->execute(
+        $event = (new AskQuestion)->execute(
             user_id: $user->id,
-            thing: 'toilet paper',
-            unit: 'rolls',
-            amount: 8,
+            question: new DurationQuestion(thing: 'toilet paper', unit: 'rolls', amount: 8),
         );
 
         $question = Question::find($event->question_id);
@@ -149,9 +136,7 @@ describe('UpdateGuess action', function () {
         $user = User::factory()->create();
         $askEvent = (new AskQuestion)->execute(
             user_id: $user->id,
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
             guess: '3 weeks',
         );
 
@@ -171,9 +156,7 @@ describe('UpdateGuess action', function () {
         $user = User::factory()->create();
         $askEvent = (new AskQuestion)->execute(
             user_id: $user->id,
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         );
 
         (new UpdateGuess)->execute(
@@ -193,9 +176,7 @@ describe('UpdateGuess action', function () {
         $user = User::factory()->create();
         $askEvent = (new AskQuestion)->execute(
             user_id: $user->id,
-            thing: 'toilet paper',
-            unit: 'rolls',
-            amount: 8,
+            question: new DurationQuestion(thing: 'toilet paper', unit: 'rolls', amount: 8),
         );
 
         expect(Question::find($askEvent->question_id)->guess)->toBeNull();

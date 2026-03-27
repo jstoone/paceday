@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Domain\Tracking\Actions\EndRound;
+use App\Domain\Tracking\Actions\LogUsage;
 use App\Domain\Tracking\Actions\StartRound;
+use App\Domain\Tracking\QuestionType;
 use App\Domain\Tracking\States\QuestionState;
 use App\Models\Tag;
 use Carbon\CarbonImmutable;
@@ -25,13 +27,20 @@ class TagRecordController extends Controller
         $question = $tag->question;
         $questionState = QuestionState::load($question->id);
 
-        if ($questionState->question_type !== 'how_long') {
-            return response()->json([
-                'error' => 'Question type not yet supported for tag recording.',
-            ], 422);
-        }
-
         $note = $request->input('note');
+
+        if ($questionState->question_type === QuestionType::Frequency) {
+            app(LogUsage::class)->execute(
+                question_id: $question->id,
+                note: $note,
+            );
+
+            return response()->json([
+                'status' => 'recorded',
+                'action' => 'usage_logged',
+                'question' => $question->label,
+            ]);
+        }
 
         if ($questionState->active_round_id !== null) {
             app(EndRound::class)->execute(

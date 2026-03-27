@@ -4,8 +4,12 @@ namespace Database\Seeders;
 
 use App\Domain\Tracking\Actions\AskQuestion;
 use App\Domain\Tracking\Actions\EndRound;
+use App\Domain\Tracking\Actions\LogUsage;
 use App\Domain\Tracking\Actions\StartRound;
 use App\Domain\Tracking\Actions\UpdateGuess;
+use App\Domain\Tracking\Data\DurationQuestion;
+use App\Domain\Tracking\Data\FrequencyQuestion;
+use App\Domain\Tracking\Period;
 use App\Models\Question;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -25,6 +29,7 @@ class DemoDataSeeder extends Seeder
 
         $this->seedCoffeeQuestion($user);
         $this->seedToiletPaperQuestion($user);
+        $this->seedExerciseQuestion($user);
     }
 
     private function seedCoffeeQuestion(User $user): void
@@ -36,9 +41,7 @@ class DemoDataSeeder extends Seeder
 
         $event = app(AskQuestion::class)->execute(
             user_id: $user->id,
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
             guess: '3 weeks',
             note: 'Starting to track my Nespresso pods',
         );
@@ -120,9 +123,7 @@ class DemoDataSeeder extends Seeder
 
         $event = app(AskQuestion::class)->execute(
             user_id: $user->id,
-            thing: 'toilet paper',
-            unit: 'rolls',
-            amount: 12,
+            question: new DurationQuestion(thing: 'toilet paper', unit: 'rolls', amount: 12),
             guess: '6 weeks',
         );
 
@@ -153,6 +154,71 @@ class DemoDataSeeder extends Seeder
         app(StartRound::class)->execute(
             question_id: $questionId,
         );
+
+        Carbon::setTestNow();
+    }
+
+    private function seedExerciseQuestion(User $user): void
+    {
+        $this->actingAs($user);
+
+        // Ask a frequency question
+        $this->travelTo('2026-02-01 08:00:00');
+
+        $event = app(AskQuestion::class)->execute(
+            user_id: $user->id,
+            question: new FrequencyQuestion(thing: 'exercise', period: Period::Weekly),
+            guess: '4',
+            note: 'Trying to build a habit',
+        );
+
+        $questionId = $event->question_id;
+
+        // Week of Feb 3 — 3 times (under guess)
+        $this->travelTo('2026-02-03 07:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId, note: 'Morning run');
+
+        $this->travelTo('2026-02-05 18:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
+
+        $this->travelTo('2026-02-07 07:30:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
+
+        // Week of Feb 10 — 5 times (over guess)
+        $this->travelTo('2026-02-10 07:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
+
+        $this->travelTo('2026-02-11 18:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
+
+        $this->travelTo('2026-02-12 07:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
+
+        $this->travelTo('2026-02-14 09:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
+
+        $this->travelTo('2026-02-15 07:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
+
+        // Week of Feb 17 — 4 times (spot on)
+        $this->travelTo('2026-02-17 07:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
+
+        $this->travelTo('2026-02-19 18:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
+
+        $this->travelTo('2026-02-21 08:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
+
+        $this->travelTo('2026-02-22 07:30:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
+
+        // Current week — 2 so far
+        $this->travelTo('2026-03-24 07:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId, note: 'Back at it after a break');
+
+        $this->travelTo('2026-03-26 18:00:00');
+        app(LogUsage::class)->execute(question_id: $questionId);
 
         Carbon::setTestNow();
     }

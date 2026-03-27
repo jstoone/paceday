@@ -7,7 +7,6 @@ use App\Models\Round;
 use App\Models\TimelineEntry;
 use App\Support\Verbs\StateUlid;
 use Carbon\CarbonImmutable;
-use Thunk\Verbs\Attributes\Hooks\Once;
 use Thunk\Verbs\Event;
 
 class RoundEndAdjusted extends Event
@@ -35,7 +34,6 @@ class RoundEndAdjusted extends Event
         $round->ended_at = $this->new_ended_at;
     }
 
-    #[Once]
     public function handle(): void
     {
         Round::where('id', $this->round_id)->update([

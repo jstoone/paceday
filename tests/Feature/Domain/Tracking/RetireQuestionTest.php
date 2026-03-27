@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Tracking\Actions\RetireQuestion;
+use App\Domain\Tracking\Data\DurationQuestion;
 use App\Domain\Tracking\Events\QuestionAsked;
 use App\Domain\Tracking\Events\QuestionRetired;
 use App\Domain\Tracking\Events\RoundStarted;
@@ -17,9 +18,7 @@ it('retires a question and updates state', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
     Verbs::commit();
 
@@ -39,9 +38,7 @@ it('projects retired_at to the Question model', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
     Verbs::commit();
 
@@ -61,9 +58,7 @@ it('creates a timeline entry when a question is retired', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
     Verbs::commit();
 
@@ -85,9 +80,7 @@ it('prevents retiring an already retired question', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
     Verbs::commit();
 
@@ -108,9 +101,7 @@ describe('RetireQuestion action', function () {
         $questionEvent = verb(new QuestionAsked(
             user_id: $user->id,
             label: 'How long does 40 capsules of coffee last?',
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         ));
         Verbs::commit();
 
@@ -129,9 +120,7 @@ describe('RetireQuestion action', function () {
         $questionEvent = verb(new QuestionAsked(
             user_id: $user->id,
             label: 'How long does 40 capsules of coffee last?',
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         ));
 
         $roundEvent = verb(new RoundStarted(
@@ -157,9 +146,7 @@ describe('RetireQuestion action', function () {
         $questionEvent = verb(new QuestionAsked(
             user_id: $user->id,
             label: 'How long does 40 capsules of coffee last?',
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         ));
         Verbs::commit();
 

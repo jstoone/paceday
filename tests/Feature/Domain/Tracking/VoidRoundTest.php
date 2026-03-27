@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Tracking\Data\DurationQuestion;
 use App\Domain\Tracking\Events\QuestionAsked;
 use App\Domain\Tracking\Events\RoundEnded;
 use App\Domain\Tracking\Events\RoundStarted;
@@ -18,9 +19,7 @@ it('voids an active round and updates state', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(
@@ -46,9 +45,7 @@ it('voids an ended round and updates state', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(
@@ -79,9 +76,7 @@ it('prevents voiding an already voided round', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(
@@ -107,9 +102,7 @@ it('clears active_round_id when voiding an active round', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(
@@ -136,9 +129,7 @@ it('projects voided round to eloquent models', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(
@@ -167,9 +158,7 @@ it('creates a timeline entry when a round is voided', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(

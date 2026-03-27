@@ -9,7 +9,6 @@ use App\Models\Round;
 use App\Models\TimelineEntry;
 use App\Support\Verbs\StateUlid;
 use Carbon\CarbonImmutable;
-use Thunk\Verbs\Attributes\Hooks\Once;
 use Thunk\Verbs\Event;
 
 class RoundStarted extends Event
@@ -44,25 +43,29 @@ class RoundStarted extends Event
         $question->active_round_id = $this->round_id;
     }
 
-    #[Once]
     public function handle(): void
     {
-        Round::create([
-            'id' => $this->round_id,
-            'question_id' => $this->question_id,
-            'status' => 'active',
-            'occurred_at' => $this->occurred_at,
-        ]);
+        Round::updateOrCreate(
+            ['id' => $this->round_id],
+            [
+                'question_id' => $this->question_id,
+                'status' => 'active',
+                'occurred_at' => $this->occurred_at,
+            ],
+        );
 
         Question::where('id', $this->question_id)
             ->update(['active_round_id' => $this->round_id]);
 
-        TimelineEntry::create([
-            'question_id' => $this->question_id,
-            'type' => 'round_started',
-            'occurred_at' => $this->occurred_at,
-            'recorded_at' => $this->occurred_at,
-            'metadata' => ['round_id' => $this->round_id],
-        ]);
+        TimelineEntry::updateOrCreate(
+            ['event_id' => $this->id],
+            [
+                'question_id' => $this->question_id,
+                'type' => 'round_started',
+                'occurred_at' => $this->occurred_at,
+                'recorded_at' => $this->occurred_at,
+                'metadata' => ['round_id' => $this->round_id],
+            ],
+        );
     }
 }

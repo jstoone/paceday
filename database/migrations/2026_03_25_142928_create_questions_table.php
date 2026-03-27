@@ -16,9 +16,10 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained();
             $table->string('label');
             $table->string('thing');
-            $table->string('unit');
-            $table->integer('amount');
-            $table->string('question_type')->default('how_long');
+            $table->string('unit')->nullable();
+            $table->integer('amount')->nullable();
+            $table->string('question_type')->default('duration');
+            $table->string('period')->nullable();
             $table->foreignUlid('active_round_id')->nullable();
             $table->timestamps();
         });

@@ -2,6 +2,7 @@
 
 use App\Domain\Tracking\Actions\CreateTag;
 use App\Domain\Tracking\Actions\UnlinkTag;
+use App\Domain\Tracking\Data\DurationQuestion;
 use App\Domain\Tracking\Events\QuestionAsked;
 use App\Domain\Tracking\Events\RoundStarted;
 use App\Domain\Tracking\Events\TagCreated;
@@ -54,9 +55,7 @@ describe('TagLinked event', function () {
         $questionEvent = verb(new QuestionAsked(
             user_id: $user->id,
             label: 'How long does 40 capsules of coffee last?',
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         ));
 
         $tagEvent = verb(new TagCreated(
@@ -86,9 +85,7 @@ describe('TagUnlinked event', function () {
         $questionEvent = verb(new QuestionAsked(
             user_id: $user->id,
             label: 'How long does 40 capsules of coffee last?',
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         ));
 
         $tagEvent = verb(new TagCreated(
@@ -136,9 +133,7 @@ describe('CreateTag action', function () {
         $questionEvent = verb(new QuestionAsked(
             user_id: $user->id,
             label: 'How long does 40 capsules of coffee last?',
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         ));
         Verbs::commit();
 
@@ -159,9 +154,7 @@ describe('CreateTag action', function () {
         $questionEvent = verb(new QuestionAsked(
             user_id: $user->id,
             label: 'How long does 40 capsules of coffee last?',
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         ));
         Verbs::commit();
 
@@ -186,9 +179,7 @@ describe('UnlinkTag action', function () {
         $questionEvent = verb(new QuestionAsked(
             user_id: $user->id,
             label: 'How long does 40 capsules of coffee last?',
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         ));
         Verbs::commit();
 
@@ -212,9 +203,7 @@ describe('Tag recording surface', function () {
         $questionEvent = verb(new QuestionAsked(
             user_id: $user->id,
             label: 'How long does 40 capsules of coffee last?',
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         ));
         Verbs::commit();
 
@@ -242,9 +231,7 @@ describe('Tag recording surface', function () {
         $questionEvent = verb(new QuestionAsked(
             user_id: $user->id,
             label: 'How long does 40 capsules of coffee last?',
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         ));
 
         verb(new RoundStarted(
@@ -272,9 +259,7 @@ describe('Tag recording surface', function () {
         $questionEvent = verb(new QuestionAsked(
             user_id: $user->id,
             label: 'How long does 40 capsules of coffee last?',
-            thing: 'coffee',
-            unit: 'capsules',
-            amount: 40,
+            question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
         ));
         Verbs::commit();
 

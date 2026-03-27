@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Tracking\Data\DurationQuestion;
 use App\Domain\Tracking\Events\QuestionAsked;
 use App\Domain\Tracking\Events\RoundEndAdjusted;
 use App\Domain\Tracking\Events\RoundEnded;
@@ -18,9 +19,7 @@ it('adjusts the start date of a round', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(
@@ -48,9 +47,7 @@ it('projects adjusted start date to eloquent model', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(
@@ -76,9 +73,7 @@ it('updates the round_started timeline entry when start date is adjusted', funct
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(
@@ -107,9 +102,7 @@ it('adjusts the end date of an ended round', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(
@@ -145,9 +138,7 @@ it('prevents adjusting end date of a round that has not ended', function () {
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(
@@ -168,9 +159,7 @@ it('updates the round_ended timeline entry when end date is adjusted', function 
     $questionEvent = verb(new QuestionAsked(
         user_id: $user->id,
         label: 'How long does 40 capsules of coffee last?',
-        thing: 'coffee',
-        unit: 'capsules',
-        amount: 40,
+        question: new DurationQuestion(thing: 'coffee', unit: 'capsules', amount: 40),
     ));
 
     $roundEvent = verb(new RoundStarted(

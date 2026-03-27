@@ -7,7 +7,6 @@ use App\Models\Question;
 use App\Models\TimelineEntry;
 use App\Support\Verbs\StateUlid;
 use Carbon\CarbonImmutable;
-use Thunk\Verbs\Attributes\Hooks\Once;
 use Thunk\Verbs\Event;
 
 class QuestionRetired extends Event
@@ -33,18 +32,20 @@ class QuestionRetired extends Event
         $state->retired_at = $this->retired_at;
     }
 
-    #[Once]
     public function handle(): void
     {
         Question::where('id', $this->question_id)->update([
             'retired_at' => $this->retired_at,
         ]);
 
-        TimelineEntry::create([
-            'question_id' => $this->question_id,
-            'type' => 'question_retired',
-            'occurred_at' => $this->retired_at,
-            'recorded_at' => $this->retired_at,
-        ]);
+        TimelineEntry::updateOrCreate(
+            ['event_id' => $this->id],
+            [
+                'question_id' => $this->question_id,
+                'type' => 'question_retired',
+                'occurred_at' => $this->retired_at,
+                'recorded_at' => $this->retired_at,
+            ],
+        );
     }
 }

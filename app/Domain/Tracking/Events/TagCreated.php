@@ -5,7 +5,6 @@ namespace App\Domain\Tracking\Events;
 use App\Domain\Tracking\States\TagState;
 use App\Models\Tag;
 use App\Support\Verbs\StateUlid;
-use Thunk\Verbs\Attributes\Hooks\Once;
 use Thunk\Verbs\Event;
 
 class TagCreated extends Event
@@ -23,13 +22,14 @@ class TagCreated extends Event
         $state->user_id = $this->user_id;
     }
 
-    #[Once]
     public function handle(): void
     {
-        Tag::create([
-            'id' => $this->tag_id,
-            'code' => $this->code,
-            'user_id' => $this->user_id,
-        ]);
+        Tag::updateOrCreate(
+            ['id' => $this->tag_id],
+            [
+                'code' => $this->code,
+                'user_id' => $this->user_id,
+            ],
+        );
     }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Domain\Tracking\Period;
+use App\Domain\Tracking\QuestionType;
 use Database\Factories\QuestionFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -18,6 +20,8 @@ class Question extends Model
     protected function casts(): array
     {
         return [
+            'question_type' => QuestionType::class,
+            'period' => Period::class,
             'retired_at' => 'immutable_datetime',
         ];
     }
