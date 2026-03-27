@@ -8,7 +8,8 @@
       "Bash(vendor/bin/*)",
       "Bash(php artisan:*)",
       "Bash(find *)",
-      "Bash(gh issue:*)"
+      "Bash(gh issue:*)",
+      "WebFetch(domain:fluxui.dev)"
     ]
   },
   "enabledMcpjsonServers": [
