@@ -14,36 +14,25 @@ beforeEach(function () {
     ]);
 });
 
-test('security settings page can be rendered', function () {
+test('settings page renders security section with two factor', function () {
     $user = User::factory()->create();
 
     $this->actingAs($user)
-        ->withSession(['auth.password_confirmed_at' => time()])
-        ->get(route('security.edit'))
+        ->get(route('settings'))
         ->assertOk()
         ->assertSee('Two-factor authentication')
         ->assertSee('Enable 2FA');
 });
 
-test('security settings page requires password confirmation when enabled', function () {
-    $user = User::factory()->create();
-
-    $response = $this->actingAs($user)
-        ->get(route('security.edit'));
-
-    $response->assertRedirect(route('password.confirm'));
-});
-
-test('security settings page renders without two factor when feature is disabled', function () {
+test('settings page renders security section without two factor when feature is disabled', function () {
     config(['fortify.features' => []]);
 
     $user = User::factory()->create();
 
     $this->actingAs($user)
-        ->withSession(['auth.password_confirmed_at' => time()])
-        ->get(route('security.edit'))
+        ->get(route('settings'))
         ->assertOk()
-        ->assertSee('Update password')
+        ->assertSee('Security')
         ->assertDontSee('Two-factor authentication');
 });
 

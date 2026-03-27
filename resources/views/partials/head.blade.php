@@ -13,4 +13,3 @@
 <link href="https://fonts.bunny.net/css?family=fredoka:400,500,600,700&family=dm-sans:400,500,600,700" rel="stylesheet" />
 
 @vite(['resources/css/app.css', 'resources/js/app.js'])
-@fluxAppearance

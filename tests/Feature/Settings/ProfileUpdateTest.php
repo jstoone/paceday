@@ -3,10 +3,10 @@
 use App\Models\User;
 use Livewire\Livewire;
 
-test('profile page is displayed', function () {
+test('settings page is displayed', function () {
     $this->actingAs($user = User::factory()->create());
 
-    $this->get(route('profile.edit'))->assertOk();
+    $this->get(route('settings'))->assertOk();
 });
 
 test('profile information can be updated', function () {

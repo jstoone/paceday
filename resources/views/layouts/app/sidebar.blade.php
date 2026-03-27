@@ -23,7 +23,7 @@
                     </button>
 
                     <flux:menu>
-                        <flux:menu.item :href="route('profile.edit')" icon="cog" wire:navigate>
+                        <flux:menu.item :href="route('settings')" icon="cog" wire:navigate>
                             {{ __('Settings') }}
                         </flux:menu.item>
 
