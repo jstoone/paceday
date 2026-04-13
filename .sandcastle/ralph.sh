@@ -10,7 +10,6 @@ LOG_DIR="$SCRIPT_DIR/logs"
 # Defaults
 MAX_ITERATIONS=$(jq -r '.defaultIterations // 100' "$CONFIG_FILE")
 DRY_RUN=false
-AUTO_PERMISSIONS=false
 MODEL=""
 MAX_BUDGET=""
 BRANCH=""
@@ -38,14 +37,13 @@ Options:
   --model <model>       Claude model to use (e.g., opus, sonnet)
   --budget <usd>        Max budget per iteration in USD
   --branch <name>       Git branch to work on (default: current branch)
-  --auto                Enable autonomous mode (bypass permissions)
   --dry-run             Show what would be done without running Claude
   -h, --help            Show this help
 
 Examples:
-  ./ralph.sh --auto                          # Run autonomously
+  ./ralph.sh                                 # Run autonomously
   ./ralph.sh --max 5 --dry-run               # Preview 5 iterations
-  ./ralph.sh --auto --model sonnet --budget 1 # Use Sonnet, cap at \$1/iteration
+  ./ralph.sh --model sonnet --budget 1       # Use Sonnet, cap at \$1/iteration
 USAGE
     exit 0
 }
@@ -57,7 +55,6 @@ while [[ $# -gt 0 ]]; do
         --model)     MODEL="$2"; shift 2 ;;
         --budget)    MAX_BUDGET="$2"; shift 2 ;;
         --branch)    BRANCH="$2"; shift 2 ;;
-        --auto)      AUTO_PERMISSIONS=true; shift ;;
         --dry-run)   DRY_RUN=true; shift ;;
         -h|--help)   usage ;;
         *)           err "Unknown option: $1"; usage ;;
@@ -149,10 +146,7 @@ build_claude_flags() {
     local flags=()
 
     flags+=("--print")
-
-    if [[ "$AUTO_PERMISSIONS" == true ]]; then
-        flags+=("--dangerously-skip-permissions")
-    fi
+    flags+=("--dangerously-skip-permissions")
 
     if [[ -n "$MODEL" ]]; then
         flags+=("--model" "$MODEL")
@@ -183,7 +177,6 @@ main() {
     log "Starting Ralph loop"
     log "  Branch:     $(git branch --show-current)"
     log "  Max iter:   $MAX_ITERATIONS"
-    log "  Auto:       $AUTO_PERMISSIONS"
     [[ -n "$MODEL" ]]      && log "  Model:      $MODEL"
     [[ -n "$MAX_BUDGET" ]] && log "  Budget/iter: \$$MAX_BUDGET"
     echo ""
@@ -254,11 +247,14 @@ main() {
         local claude_flags
         claude_flags=$(build_claude_flags)
 
-        log "Spawning Claude... (log: $logfile)"
+        local session_id
+        session_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
+        log "Spawning Claude... (session: $session_id)"
+        dim "  log: $logfile"
 
         local output
         # shellcheck disable=SC2086
-        if output=$(echo "$prompt" | claude $claude_flags 2>&1 | tee "$logfile"); then
+        if output=$(echo "$prompt" | claude $claude_flags --session-id "$session_id" 2>&1 | tee "$logfile"); then
             log "Claude exited successfully"
         else
             warn "Claude exited with non-zero status"
